@@ -21,6 +21,10 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let workspace_root = manifest_dir.parent().unwrap();
     let ob_src = workspace_root.join("vendor").join("openbabel-src");
+    // Eigen (header-only) is vendored as a submodule. Pointing OpenBabel's
+    // `find_package(Eigen3)` at it enables HAVE_EIGEN3, which compiles OBAlign
+    // (structure superposition) and unlocks distance-geometry 3D generation.
+    let eigen_dir = workspace_root.join("vendor").join("eigen");
 
     println!("cargo:rerun-if-changed=shim/shim.cc");
     println!("cargo:rerun-if-changed=shim/shim.h");
@@ -33,6 +37,12 @@ fn main() {
          Run: git submodule update --init --recursive",
         ob_src.display()
     );
+    assert!(
+        eigen_dir.join("Eigen").join("Core").exists(),
+        "Eigen headers not found at {}.\n\
+         Run: git submodule update --init --recursive",
+        eigen_dir.display()
+    );
 
     // Make the bundled InChI library linkable on MSVC (see fn docs).
     ensure_inchi_auxinfo_stubs(&ob_src);
@@ -44,8 +54,12 @@ fn main() {
     // compiled shim uses — mixing CRTs would be an ABI hazard. It also avoids
     // needing debug builds of any optional dependency.
     //
-    // Optional features that pull in heavy external deps (Boost/Eigen/Cairo/
+    // Optional features that pull in heavy external deps (Boost/Cairo/
     // RapidJSON) are disabled; the formats we need do not require them.
+    //
+    // Eigen IS enabled (via EIGEN3_INCLUDE_DIR below): it defines HAVE_EIGEN3,
+    // which compiles OBAlign (least-squares structure superposition) and the
+    // `align`/`conformer` ops, and enables distance-geometry 3D generation.
     //
     // InChI IS enabled: OpenBabel bundles the InChI library source and builds
     // it into a separate `inchi` shared library, so this needs no external
@@ -60,6 +74,8 @@ fn main() {
     // stay OFF so the bundled InChI source is compiled instead. We also set
     // `OPENBABEL_USE_SYSTEM_INCHI=OFF` explicitly to overwrite any stale ON
     // value a previous forced configure may have baked into the CMake cache.
+    // CMake prefers forward slashes in `-D` path values on Windows.
+    let eigen_include = eigen_dir.to_string_lossy().replace('\\', "/");
     let mut cfg = cmake::Config::new(&ob_src);
     cfg.profile("Release")
         .define("BUILD_GUI", "OFF")
@@ -70,7 +86,8 @@ fn main() {
         .define("WITH_JSON", "OFF")
         .define("WITH_INCHI", "ON")
         .define("OB_USE_PREBUILT_BINARIES", "OFF")
-        .define("OPENBABEL_USE_SYSTEM_INCHI", "OFF");
+        .define("OPENBABEL_USE_SYSTEM_INCHI", "OFF")
+        .define("EIGEN3_INCLUDE_DIR", &eigen_include);
 
     // The `cmake` crate overrides CMAKE_CXX_FLAGS/CMAKE_C_FLAGS with its own
     // minimal set (`-nologo -MD -Brepro -W0`), which drops the `/DWIN32
@@ -112,11 +129,18 @@ fn main() {
     // the library itself was built with: `WIN32`/`_WINDOWS` (enable OpenBabel's
     // Windows shims such as `strcasecmp`), `/EHsc` (the shim uses try/catch),
     // `/GR` (RTTI), and `/utf-8` (our sources contain non-ASCII comments).
+    //
+    // It also includes `<openbabel/math/align.h>` for OBAlign, and that header
+    // includes `<Eigen/Core>` unconditionally, so Eigen must be on the shim's
+    // include path too. (No `-DHAVE_EIGEN3` is needed: the header's HAVE_EIGEN3
+    // regions are ABI-neutral member declarations, so the shim and library
+    // agree on layout without it.)
     let mut build = cxx_build::bridge("src/lib.rs");
     build
         .file("shim/shim.cc")
         .include("shim")
         .include(&include_dir)
+        .include(&eigen_dir)
         .std("c++17");
     if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
         build

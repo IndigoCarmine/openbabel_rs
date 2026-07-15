@@ -6,6 +6,7 @@
 #include <openbabel/descriptor.h>
 #include <openbabel/fingerprint.h>
 #include <openbabel/forcefield.h>
+#include <openbabel/math/align.h>
 #include <openbabel/obconversion.h>
 #include <openbabel/op.h>
 #include <openbabel/plugin.h>
@@ -389,6 +390,33 @@ bool mol_compute_charges(Molecule &mol, rust::Str model) {
     return cm->ComputeCharges(mol.mol);
   } catch (...) {
     return false;
+  }
+}
+
+// --- Structure alignment -------------------------------------------------
+
+double mol_align(Molecule &mol, const Molecule &reference, bool include_h,
+                 bool symmetry, bool &ok) {
+  try {
+    // OBAlign superposes atoms in order, so the molecules must have matching
+    // atom counts; reject a mismatch rather than produce a meaningless fit.
+    if (mol.mol.NumAtoms() != reference.mol.NumAtoms()) {
+      ok = false;
+      return 0.0;
+    }
+    OpenBabel::OBAlign aln(include_h, symmetry);
+    aln.SetRefMol(reference.mol);
+    aln.SetTargetMol(mol.mol);
+    if (!aln.Align()) {
+      ok = false;
+      return 0.0;
+    }
+    aln.UpdateCoords(&mol.mol);
+    ok = true;
+    return aln.GetRMSD();
+  } catch (...) {
+    ok = false;
+    return 0.0;
   }
 }
 

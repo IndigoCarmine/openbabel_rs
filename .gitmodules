@@ -1,3 +1,6 @@
 [submodule "vendor/openbabel-src"]
 	path = vendor/openbabel-src
 	url = https://github.com/openbabel/openbabel.git
+[submodule "vendor/eigen"]
+	path = vendor/eigen
+	url = https://gitlab.com/libeigen/eigen.git

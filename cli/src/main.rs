@@ -67,6 +67,14 @@ fn main() {
         if let Some(e) = mol.optimize_geometry("MMFF94", 500) {
             println!("  after optimize:  {e:.3} {unit}");
         }
+
+        // Superpose a fresh copy back onto the original (T5): identical
+        // structures align with ~0 RMSD.
+        if let Ok(mut copy) = Molecule::parse(&mol.write("mol").unwrap_or_default(), "mol") {
+            if let Some(rmsd) = copy.align_to(&mol) {
+                println!("Self-align RMSD:   {rmsd:.4}");
+            }
+        }
     }
 
     // Assign partial atomic charges so the per-atom listing can show them (T4).

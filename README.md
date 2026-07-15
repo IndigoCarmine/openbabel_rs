@@ -11,8 +11,10 @@ cheminformatics toolkit, built with [`cxx`](https://cxx.rs) over a thin C++ shim
 | `openbabel`     | Safe, idiomatic API (`Molecule`, `Atom`, `Bond`, `Error`).          |
 | `cli`           | `openbabel-demo` — a small SMILES-inspection demo.                   |
 
-OpenBabel itself is vendored as a git submodule at `vendor/openbabel-src`
-(pinned to tag `openbabel-3-2-1`).
+Dependencies are vendored as git submodules: OpenBabel at `vendor/openbabel-src`
+(tag `openbabel-3-2-1`) and Eigen (header-only, for structure alignment) at
+`vendor/eigen` (tag `3.4.0`). Fetch both with
+`git submodule update --init --recursive`.
 
 ## Current scope
 
@@ -43,8 +45,8 @@ Analysis:
   (`Molecule::energy` / `optimize_geometry`) with `MMFF94`, `MMFF94s`, `UFF`,
   `GAFF`, `Ghemical`; unit via `forcefield_energy_unit`.
 
-> Distance-geometry 3D generation (`--gen3d dg`) needs Eigen, which this build
-> disables; the default fragment-builder path used by `generate_3d` does not.
+> `generate_3d` uses the fast fragment-builder path. Distance-geometry
+> generation, which needs Eigen, is also available now that Eigen is enabled.
 
 Charges, atom chemistry & identifiers:
 
@@ -55,6 +57,13 @@ Charges, atom chemistry & identifiers:
   `hybridization`, `is_hbond_donor`, `is_hbond_acceptor`.
 - InChI / InChIKey identifiers (`Molecule::inchi` / `inchikey`), backed by the
   InChI library bundled with OpenBabel.
+
+Structure alignment:
+
+- Least-squares superposition of one molecule onto another
+  (`Molecule::align_to` / `align_to_with`, Kabsch algorithm): returns the RMSD
+  and updates the aligned molecule's coordinates in place. Backed by OpenBabel's
+  `OBAlign`, enabled by the vendored Eigen submodule.
 
 ## Thread safety
 

@@ -139,4 +139,14 @@ uint32_t mol_dimension(const Molecule &mol);
 // failure. After this, atom_partial_charge() reflects the assigned charges.
 bool mol_compute_charges(Molecule &mol, rust::Str model);
 
+// --- Structure alignment (OBAlign) ----------------------------------------
+// Least-squares superpose `mol` onto `reference` (Kabsch algorithm). Updates
+// `mol`'s coordinates in place to the aligned pose and returns the RMSD.
+// `include_h` counts hydrogens in the fit (otherwise heavy-atom RMSD);
+// `symmetry` lets symmetry-equivalent atoms be remapped for the best fit.
+// `ok` is false if the two molecules differ in atom count or alignment fails.
+// The molecules must have the same atom ordering for the result to be sensible.
+double mol_align(Molecule &mol, const Molecule &reference, bool include_h,
+                 bool symmetry, bool &ok);
+
 }  // namespace ob_shim

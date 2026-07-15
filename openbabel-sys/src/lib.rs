@@ -119,6 +119,19 @@ pub mod ffi {
         /// Assign partial charges with model `model` ("gasteiger"/"mmff94"/
         /// "eem"/...); false on unknown model or failure.
         fn mol_compute_charges(mol: Pin<&mut Molecule>, model: &str) -> bool;
+
+        // Structure alignment.
+        /// Least-squares superpose `mol` onto `reference`, updating `mol`'s
+        /// coordinates in place and returning the RMSD. `include_h` counts H in
+        /// the fit; `symmetry` allows symmetry-equivalent remapping. Sets `ok`
+        /// to false on atom-count mismatch or alignment failure.
+        fn mol_align(
+            mol: Pin<&mut Molecule>,
+            reference: &Molecule,
+            include_h: bool,
+            symmetry: bool,
+            ok: &mut bool,
+        ) -> f64;
     }
 }
 

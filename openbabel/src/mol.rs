@@ -156,6 +156,45 @@ impl Molecule {
         with_ob(|| ffi::mol_compute_charges(self.inner.pin_mut(), model))
     }
 
+    /// Least-squares superpose this molecule onto `reference` (Kabsch
+    /// algorithm), updating this molecule's coordinates to the best-fit pose
+    /// and returning the heavy-atom RMSD.
+    ///
+    /// Hydrogens are excluded from the fit and symmetry-equivalent atoms may be
+    /// remapped for the best fit; use [`align_to_with`](Self::align_to_with) for
+    /// control. Both molecules must have the same atoms in the same order (e.g.
+    /// two conformers, or a structure and a transformed copy) and 3D
+    /// coordinates. Returns `None` if the atom counts differ or alignment fails.
+    pub fn align_to(&mut self, reference: &Molecule) -> Option<f64> {
+        self.align_to_with(reference, false, true)
+    }
+
+    /// Like [`align_to`](Self::align_to), but with explicit control over whether
+    /// hydrogens are included in the fit (`include_h`) and whether
+    /// symmetry-equivalent atoms may be remapped (`symmetry`).
+    pub fn align_to_with(
+        &mut self,
+        reference: &Molecule,
+        include_h: bool,
+        symmetry: bool,
+    ) -> Option<f64> {
+        let mut ok = true;
+        let rmsd = with_ob(|| {
+            ffi::mol_align(
+                self.inner.pin_mut(),
+                reference.as_inner(),
+                include_h,
+                symmetry,
+                &mut ok,
+            )
+        });
+        if ok {
+            Some(rmsd)
+        } else {
+            None
+        }
+    }
+
     /// Coordinate dimension: `0` (no coordinates), `2`, or `3`.
     pub fn dimension(&self) -> u32 {
         with_ob(|| ffi::mol_dimension(self.as_inner()))
