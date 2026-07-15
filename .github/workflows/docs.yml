@@ -45,8 +45,18 @@ jobs:
       - name: Install mdbook + i18n helpers
         run: cargo install mdbook mdbook-i18n-helpers --locked
 
-      - name: Build API reference (rustdoc)
+      - name: Build API reference — English (rustdoc)
+        env:
+          RUSTDOCFLAGS: --html-in-header ${{ github.workspace }}/docs/api-i18n/rustdoc-lang.html
         run: cargo doc --workspace --no-deps
+
+      - name: Stage English API reference
+        run: |
+          mkdir -p site/api
+          cp -r target/doc/. site/api/
+
+      - name: Build API reference — Japanese (translated doc comments)
+        run: bash docs/api-i18n/build-ja-api.sh target/ja-api
 
       - name: Build mdBook — English
         working-directory: docs
@@ -60,12 +70,14 @@ jobs:
 
       - name: Assemble site
         run: |
-          mkdir -p site/ja site/api
+          mkdir -p site/ja
           cp -r docs/book/en/. site/
           cp -r docs/book/ja/. site/ja/
-          cp -r target/doc/. site/api/
-          # /api/ -> the crate's rustdoc landing page.
+          mkdir -p site/ja/api
+          cp -r target/ja-api/. site/ja/api/
+          # /api/ and /ja/api/ -> the crate's rustdoc landing page.
           printf '<meta http-equiv="refresh" content="0; url=openbabel/index.html">\n' > site/api/index.html
+          printf '<meta http-equiv="refresh" content="0; url=openbabel/index.html">\n' > site/ja/api/index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

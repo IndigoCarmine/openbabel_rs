@@ -63,3 +63,30 @@ The site is assembled for GitHub Pages as:
 Because translations are keyed by the exact English source text, an edit to the
 English automatically flags the corresponding Japanese as stale, so the two
 never silently drift apart.
+
+## Japanese API reference (`api-i18n/`)
+
+rustdoc has no localization, so the Japanese API reference is built by
+translating the crate's **doc comments** and running `cargo doc` on the result.
+The English doc comments in `openbabel/src/*.rs` are authoritative; Japanese
+lives in `api-i18n/ja.json` (keyed by the whitespace-normalized English
+paragraph). Fenced code blocks — including doctests — are never translated.
+
+```sh
+# Build the Japanese API reference into target/ja-api/ (English sources are
+# rewritten on a copy and restored on exit; openbabel-sys stays cached).
+bash docs/api-i18n/build-ja-api.sh target/ja-api
+
+# See which paragraphs are not yet translated (English will show through):
+python docs/api-i18n/doci18n.py stats openbabel/src docs/api-i18n/ja.json
+```
+
+**Keeping it in sync.** When you add or change a doc comment, `stats` lists the
+new/changed English paragraphs; add an entry for each to `api-i18n/ja.json`
+(key = the exact English paragraph, value = the Japanese). Anything left
+untranslated simply falls back to English, so the reference is never broken by a
+missing translation.
+
+The English (`/api/`) and Japanese (`/ja/api/`) references are deployed together
+by `docs.yml`, with a 🌐 switch (injected via `api-i18n/rustdoc-lang.html`) in
+the top-right corner of every page.
