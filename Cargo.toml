@@ -1,0 +1,19 @@
+# Virtual workspace for the OpenBabel Rust bindings.
+#
+#   openbabel-sys : low-level cxx FFI bridge + C++ shim (builds OpenBabel from source)
+#   openbabel     : safe, idiomatic Rust API on top of -sys
+#   cli           : small demo binary
+[workspace]
+resolver = "2"
+members = ["openbabel-sys", "openbabel", "cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0"
+repository = "https://github.com/IndigoCarmine/openbabel_rs"
+
+[workspace.dependencies]
+cxx = "1.0"
+cxx-build = "1.0"
+cmake = "0.1"

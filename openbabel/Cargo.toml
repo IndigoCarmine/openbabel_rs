@@ -1,0 +1,11 @@
+[package]
+name = "openbabel"
+description = "Safe, idiomatic Rust bindings to the OpenBabel cheminformatics toolkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+openbabel-sys = { path = "../openbabel-sys", version = "0.1.0" }
+cxx.workspace = true

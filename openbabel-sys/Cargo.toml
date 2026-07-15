@@ -1,0 +1,15 @@
+[package]
+name = "openbabel-sys"
+description = "Low-level FFI bindings (cxx bridge + C++ shim) to the OpenBabel C++ library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+links = "openbabel-3"
+
+[dependencies]
+cxx.workspace = true
+
+[build-dependencies]
+cxx-build.workspace = true
+cmake.workspace = true
