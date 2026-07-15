@@ -405,4 +405,34 @@ uint32_t ring_size(const Molecule &mol, uint32_t ring_idx);
 rust::Vec<uint32_t> ring_atom_indices(const Molecule &mol, uint32_t ring_idx);
 bool ring_is_aromatic(const Molecule &mol, uint32_t ring_idx);
 
+// --- Graph navigation (atom idx 1-based; returned atom/bond idx 0-based) ---
+// 0-based indices of the atoms bonded to atom `idx`.
+rust::Vec<uint32_t> atom_neighbor_indices(const Molecule &mol, uint32_t idx);
+// 0-based indices of the bonds incident to atom `idx`.
+rust::Vec<uint32_t> atom_bond_indices(const Molecule &mol, uint32_t idx);
+// Number of bonds from atom `idx` with the given order.
+uint32_t atom_count_bonds_of_order(const Molecule &mol, uint32_t idx, uint32_t order);
+// Number of explicit (present-in-graph) hydrogens on atom `idx`.
+uint32_t atom_explicit_h_count(const Molecule &mol, uint32_t idx);
+// 0-based bond index joining 0-based atoms `a` and `b`; -1 if not bonded.
+int mol_bond_between(const Molecule &mol, uint32_t a, uint32_t b);
+// 0-based index of the atom at the other end of bond `bond_idx` from 0-based
+// atom `atom_idx`; -1 if that atom is not on the bond.
+int bond_other_atom(const Molecule &mol, uint32_t bond_idx, uint32_t atom_idx);
+
+// --- Crystallography (unit cell) ------------------------------------------
+bool mol_has_unit_cell(const Molecule &mol);
+// [a, b, c, alpha, beta, gamma] (lengths in Å, angles in degrees); empty if no
+// unit cell.
+rust::Vec<double> mol_cell_parameters(const Molecule &mol);
+double mol_cell_volume(const Molecule &mol);
+rust::String mol_cell_spacegroup(const Molecule &mol);
+// LatticeType: 0 undefined,1 triclinic,2 monoclinic,3 orthorhombic,4 tetragonal,
+// 5 rhombohedral,6 hexagonal,7 cubic.
+uint32_t mol_cell_lattice_type(const Molecule &mol);
+// Convert Cartesian <-> fractional coordinates; each returns [x,y,z] (empty if
+// no unit cell).
+rust::Vec<double> mol_cell_to_fractional(const Molecule &mol, double x, double y, double z);
+rust::Vec<double> mol_cell_to_cartesian(const Molecule &mol, double x, double y, double z);
+
 }  // namespace ob_shim

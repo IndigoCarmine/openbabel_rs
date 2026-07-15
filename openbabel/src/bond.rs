@@ -82,6 +82,20 @@ impl<'mol> Bond<'mol> {
     pub fn is_closure(&self) -> bool {
         crate::with_ob(|| ffi::bond_is_closure(self.mol, self.ob_idx))
     }
+
+    /// The atom at the other end of this bond from `atom`, or `None` if `atom`
+    /// is not one of this bond's endpoints.
+    pub fn other_atom(&self, atom: &crate::Atom<'mol>) -> Option<crate::Atom<'mol>> {
+        let idx = crate::with_ob(|| ffi::bond_other_atom(self.mol, self.ob_idx, atom.index()));
+        if idx < 0 {
+            None
+        } else {
+            Some(crate::atom::Atom {
+                mol: self.mol,
+                ob_idx: idx as u32 + 1,
+            })
+        }
+    }
 }
 
 impl std::fmt::Debug for Bond<'_> {

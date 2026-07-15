@@ -373,6 +373,26 @@ pub mod ffi {
         fn ring_size(mol: &Molecule, ring_idx: u32) -> u32;
         fn ring_atom_indices(mol: &Molecule, ring_idx: u32) -> Vec<u32>;
         fn ring_is_aromatic(mol: &Molecule, ring_idx: u32) -> bool;
+
+        // Graph navigation (atom idx 1-based; returned indices 0-based).
+        fn atom_neighbor_indices(mol: &Molecule, idx: u32) -> Vec<u32>;
+        fn atom_bond_indices(mol: &Molecule, idx: u32) -> Vec<u32>;
+        fn atom_count_bonds_of_order(mol: &Molecule, idx: u32, order: u32) -> u32;
+        fn atom_explicit_h_count(mol: &Molecule, idx: u32) -> u32;
+        /// 0-based bond index joining 0-based atoms `a`/`b`; -1 if not bonded.
+        fn mol_bond_between(mol: &Molecule, a: u32, b: u32) -> i32;
+        /// 0-based atom across bond `bond_idx` from 0-based `atom_idx`; -1 if not on it.
+        fn bond_other_atom(mol: &Molecule, bond_idx: u32, atom_idx: u32) -> i32;
+
+        // Crystallography (unit cell).
+        fn mol_has_unit_cell(mol: &Molecule) -> bool;
+        /// `[a, b, c, alpha, beta, gamma]`; empty if no unit cell.
+        fn mol_cell_parameters(mol: &Molecule) -> Vec<f64>;
+        fn mol_cell_volume(mol: &Molecule) -> f64;
+        fn mol_cell_spacegroup(mol: &Molecule) -> String;
+        fn mol_cell_lattice_type(mol: &Molecule) -> u32;
+        fn mol_cell_to_fractional(mol: &Molecule, x: f64, y: f64, z: f64) -> Vec<f64>;
+        fn mol_cell_to_cartesian(mol: &Molecule, x: f64, y: f64, z: f64) -> Vec<f64>;
     }
 }
 

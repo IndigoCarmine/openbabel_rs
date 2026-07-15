@@ -1320,4 +1320,102 @@ bool ring_is_aromatic(const Molecule &mol, uint32_t ring_idx) {
   return r ? r->IsAromatic() : false;
 }
 
+// --- Graph navigation -----------------------------------------------------
+
+rust::Vec<uint32_t> atom_neighbor_indices(const Molecule &mol, uint32_t idx) {
+  rust::Vec<uint32_t> out;
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (!a) return out;
+  OpenBabel::OBBondIterator it;
+  for (OpenBabel::OBAtom *n = a->BeginNbrAtom(it); n; n = a->NextNbrAtom(it))
+    out.push_back(static_cast<uint32_t>(n->GetIdx()) - 1);
+  return out;
+}
+rust::Vec<uint32_t> atom_bond_indices(const Molecule &mol, uint32_t idx) {
+  rust::Vec<uint32_t> out;
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (!a) return out;
+  OpenBabel::OBBondIterator it;
+  for (OpenBabel::OBBond *b = a->BeginBond(it); b; b = a->NextBond(it))
+    out.push_back(static_cast<uint32_t>(b->GetIdx()));  // bond idx already 0-based
+  return out;
+}
+uint32_t atom_count_bonds_of_order(const Molecule &mol, uint32_t idx, uint32_t order) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->CountBondsOfOrder(order) : 0;
+}
+uint32_t atom_explicit_h_count(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->ExplicitHydrogenCount() : 0;
+}
+int mol_bond_between(const Molecule &mol, uint32_t a, uint32_t b) {
+  // OBMol::GetBond takes 1-based atom indices.
+  OpenBabel::OBBond *bond =
+      const_cast<Molecule &>(mol).mol.GetBond(static_cast<int>(a) + 1, static_cast<int>(b) + 1);
+  return bond ? static_cast<int>(bond->GetIdx()) : -1;
+}
+int bond_other_atom(const Molecule &mol, uint32_t bond_idx, uint32_t atom_idx) {
+  auto *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, bond_idx));
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, atom_idx + 1));  // atom_idx is 0-based here
+  if (!b || !a) return -1;
+  OpenBabel::OBAtom *other = b->GetNbrAtom(a);
+  return other ? static_cast<int>(other->GetIdx()) - 1 : -1;
+}
+
+// --- Crystallography (unit cell) ------------------------------------------
+
+namespace {
+OpenBabel::OBUnitCell *unit_cell(const Molecule &mol) {
+  OpenBabel::OBGenericData *d =
+      const_cast<Molecule &>(mol).mol.GetData(OpenBabel::OBGenericDataType::UnitCell);
+  return dynamic_cast<OpenBabel::OBUnitCell *>(d);
+}
+}  // namespace
+
+bool mol_has_unit_cell(const Molecule &mol) { return unit_cell(mol) != nullptr; }
+rust::Vec<double> mol_cell_parameters(const Molecule &mol) {
+  rust::Vec<double> out;
+  OpenBabel::OBUnitCell *c = unit_cell(mol);
+  if (!c) return out;
+  out.push_back(c->GetA());
+  out.push_back(c->GetB());
+  out.push_back(c->GetC());
+  out.push_back(c->GetAlpha());
+  out.push_back(c->GetBeta());
+  out.push_back(c->GetGamma());
+  return out;
+}
+double mol_cell_volume(const Molecule &mol) {
+  OpenBabel::OBUnitCell *c = unit_cell(mol);
+  return c ? c->GetCellVolume() : 0.0;
+}
+rust::String mol_cell_spacegroup(const Molecule &mol) {
+  OpenBabel::OBUnitCell *c = unit_cell(mol);
+  return c ? rust::String(c->GetSpaceGroupName()) : rust::String();
+}
+uint32_t mol_cell_lattice_type(const Molecule &mol) {
+  OpenBabel::OBUnitCell *c = unit_cell(mol);
+  return c ? static_cast<uint32_t>(c->GetLatticeType()) : 0;
+}
+rust::Vec<double> mol_cell_to_fractional(const Molecule &mol, double x, double y, double z) {
+  rust::Vec<double> out;
+  OpenBabel::OBUnitCell *c = unit_cell(mol);
+  if (!c) return out;
+  OpenBabel::vector3 f = c->CartesianToFractional(OpenBabel::vector3(x, y, z));
+  out.push_back(f.x());
+  out.push_back(f.y());
+  out.push_back(f.z());
+  return out;
+}
+rust::Vec<double> mol_cell_to_cartesian(const Molecule &mol, double x, double y, double z) {
+  rust::Vec<double> out;
+  OpenBabel::OBUnitCell *c = unit_cell(mol);
+  if (!c) return out;
+  OpenBabel::vector3 v = c->FractionalToCartesian(OpenBabel::vector3(x, y, z));
+  out.push_back(v.x());
+  out.push_back(v.y());
+  out.push_back(v.z());
+  return out;
+}
+
 }  // namespace ob_shim

@@ -214,6 +214,53 @@ impl<'mol> Atom<'mol> {
     pub fn serial_number(&self) -> u32 {
         crate::with_ob(|| ffi::atom_serial_number(self.mol, self.ob_idx))
     }
+
+    /// The atoms directly bonded to this one.
+    pub fn neighbors(&self) -> Vec<Atom<'mol>> {
+        let indices = crate::with_ob(|| ffi::atom_neighbor_indices(self.mol, self.ob_idx));
+        indices
+            .into_iter()
+            .map(|i| Atom {
+                mol: self.mol,
+                ob_idx: i + 1, // shim returns 0-based
+            })
+            .collect()
+    }
+
+    /// The bonds incident to this atom.
+    pub fn bonds(&self) -> Vec<crate::Bond<'mol>> {
+        let indices = crate::with_ob(|| ffi::atom_bond_indices(self.mol, self.ob_idx));
+        indices
+            .into_iter()
+            .map(|i| crate::bond::Bond {
+                mol: self.mol,
+                ob_idx: i, // bonds are 0-based
+            })
+            .collect()
+    }
+
+    /// The bond joining this atom to `other`, or `None` if they are not bonded.
+    pub fn bond_to(&self, other: &Atom<'mol>) -> Option<crate::Bond<'mol>> {
+        let idx = crate::with_ob(|| ffi::mol_bond_between(self.mol, self.index(), other.index()));
+        if idx < 0 {
+            None
+        } else {
+            Some(crate::bond::Bond {
+                mol: self.mol,
+                ob_idx: idx as u32,
+            })
+        }
+    }
+
+    /// Number of bonds from this atom with the given order (1 = single, …).
+    pub fn count_bonds_of_order(&self, order: u32) -> u32 {
+        crate::with_ob(|| ffi::atom_count_bonds_of_order(self.mol, self.ob_idx, order))
+    }
+
+    /// Number of explicit (present-in-graph) hydrogens attached to this atom.
+    pub fn explicit_hydrogen_count(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_explicit_h_count(self.mol, self.ob_idx))
+    }
 }
 
 impl std::fmt::Debug for Atom<'_> {
