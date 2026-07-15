@@ -14,6 +14,7 @@
 #include <memory>
 #include <vector>
 
+#include <openbabel/forcefield.h>
 #include <openbabel/mol.h>
 #include <openbabel/parsmart.h>
 #include <openbabel/phmodel.h>
@@ -39,6 +40,14 @@ struct Smarts {
 // (OBChemTsfm), applied to a molecule to edit it in place (SMIRKS-like).
 struct Transform {
   OpenBabel::OBChemTsfm tsfm;
+};
+
+// Opaque (to Rust) set of force-field constraints (fixed atoms, distance /
+// angle / torsion restraints, ignored atoms). Built incrementally, then handed
+// to an optimizer_run_* call. Complete type (not forward-declared) for the
+// UniquePtr glue.
+struct Constraints {
+  OpenBabel::OBFFConstraints c;
 };
 
 // OpenBabel release version string, e.g. "3.2.1".
@@ -286,5 +295,52 @@ rust::Vec<double> mol_spectrophore(const Molecule &mol);
 // otherwise.
 rust::Vec<double> mol_vibration_frequencies(const Molecule &mol);
 rust::Vec<double> mol_vibration_intensities(const Molecule &mol);
+
+// --- Bulk coordinates -----------------------------------------------------
+// All atom coordinates flattened as [x0,y0,z0, x1,y1,z1, ...] (3 per atom).
+rust::Vec<double> mol_coordinates(const Molecule &mol);
+
+// --- Force-field constraints (atom indices are 0-based here; the shim adds 1
+// for OpenBabel's 1-based OBFFConstraints) --------------------------------
+std::unique_ptr<Constraints> constraints_new();
+void constraints_add_ignore(Constraints &c, uint32_t atom);
+void constraints_add_atom(Constraints &c, uint32_t atom);        // fix position
+void constraints_add_atom_x(Constraints &c, uint32_t atom);      // fix x only
+void constraints_add_atom_y(Constraints &c, uint32_t atom);      // fix y only
+void constraints_add_atom_z(Constraints &c, uint32_t atom);      // fix z only
+void constraints_add_distance(Constraints &c, uint32_t a, uint32_t b, double length);
+void constraints_add_angle(Constraints &c, uint32_t a, uint32_t b, uint32_t d, double angle);
+void constraints_add_torsion(Constraints &c, uint32_t a, uint32_t b, uint32_t d,
+                             uint32_t e, double torsion);
+void constraints_set_factor(Constraints &c, double factor);
+
+// --- Geometry optimization -----------------------------------------------
+// Both functions run the WHOLE minimization inside a single call, so the safe
+// wrapper can hold OpenBabel's global lock for the entire run. That atomicity
+// matters: OpenBabel's force-field constraint state (`_constraints`) is a static
+// (per-class) member shared by every instance, so interleaving two optimizations
+// would corrupt it. Each call also clears that static constraint set before
+// returning, restoring the "no constraints" state the other force-field calls
+// (mol_energy / mol_optimize) rely on.
+//
+// `algorithm` is 0 = steepest descent, 1 = conjugate gradients, 2 = L-BFGS;
+// `steps` is the step budget, `econv` the energy-convergence criterion, and
+// `constraints` the restraint set (empty for none).
+
+// Run to completion; write final coordinates back to `mol` and return the final
+// energy. Sets `ok` to false (energy NaN) if the force field is unknown or setup
+// fails.
+double optimizer_run_to_end(Molecule &mol, rust::Str ff_id, uint32_t algorithm,
+                            uint32_t steps, double econv,
+                            const Constraints &constraints, bool &ok);
+
+// Run to completion recording a frame every `frame_interval` steps. The result
+// is flattened as repeated frames, each `1 + 3 * num_atoms` doubles laid out as
+// [energy, x0, y0, z0, x1, y1, z1, ...]. `mol` ends at the final geometry. Empty
+// on unknown force field or setup failure.
+rust::Vec<double> optimizer_run_trajectory(Molecule &mol, rust::Str ff_id,
+                                           uint32_t algorithm, uint32_t steps,
+                                           double econv, const Constraints &constraints,
+                                           uint32_t frame_interval);
 
 }  // namespace ob_shim

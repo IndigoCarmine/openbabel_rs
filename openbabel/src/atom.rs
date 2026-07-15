@@ -8,7 +8,9 @@ use openbabel_sys::ffi;
 /// `R`/`S` label.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Winding {
+    /// The neighbours run clockwise when viewed from the reference direction.
     Clockwise,
+    /// The neighbours run anticlockwise when viewed from the reference direction.
     AntiClockwise,
 }
 

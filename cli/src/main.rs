@@ -7,7 +7,7 @@
 //! properties and the canonical SMILES — exercising the MVP binding surface.
 //! If a second argument is given, the 2D depiction is written there as SVG.
 
-use openbabel::{Molecule, SmartsPattern};
+use openbabel::{Algorithm, Minimizer, Molecule, SmartsPattern};
 
 fn main() {
     let smiles = std::env::args().nth(1).unwrap_or_else(|| "CCO".to_string());
@@ -108,6 +108,22 @@ fn main() {
         let sp = mol.spectrophore();
         if !sp.is_empty() {
             println!("Spectrophore:      {} values (first {:+.2})", sp.len(), sp[0]);
+        }
+
+        // Configurable minimization with a trajectory (T10): steepest descent,
+        // capturing the energy every few steps.
+        let mut cfg = Minimizer::new("MMFF94");
+        cfg.algorithm(Algorithm::SteepestDescent)
+            .max_steps(100)
+            .steps_per_frame(20);
+        let traj: Vec<_> = mol.minimize(&cfg).collect();
+        if let (Some(first), Some(last)) = (traj.first(), traj.last()) {
+            println!(
+                "Minimize (SD):     {} frames, E {:.3} -> {:.3} {unit}",
+                traj.len(),
+                first.energy,
+                last.energy,
+            );
         }
     }
 

@@ -8,7 +8,7 @@ cheminformatics toolkit, built with [`cxx`](https://cxx.rs) over a thin C++ shim
 | Crate           | Role                                                                 |
 | --------------- | ------------------------------------------------------------------- |
 | `openbabel-sys` | Low-level FFI: a `cxx` bridge + C++ shim; `build.rs` builds OpenBabel from source and links it. |
-| `openbabel`     | Safe, idiomatic API: `Molecule`, `Atom`, `Bond`, `Residue`, `SmartsPattern`, `Fingerprint`, `Transform`, the `elements` module, `Error`. |
+| `openbabel`     | Safe, idiomatic API: `Molecule`, `Atom`, `Bond`, `Residue`, `SmartsPattern`, `Fingerprint`, `Transform`, `Minimizer` / `Constraints`, the `elements` module, `Error`. |
 | `cli`           | `openbabel-demo` — a small SMILES-inspection demo.                   |
 
 Dependencies are vendored as git submodules: OpenBabel at `vendor/openbabel-src`
@@ -44,9 +44,25 @@ Analysis:
 - Force-field single-point energy and geometry optimization
   (`Molecule::energy` / `optimize_geometry`) with `MMFF94`, `MMFF94s`, `UFF`,
   `GAFF`, `Ghemical`; unit via `forcefield_energy_unit`.
+- Configurable, constrained minimization (`Molecule::optimize_geometry_with` /
+  `minimize`, `Minimizer`): pick the algorithm (`Algorithm::SteepestDescent` /
+  `ConjugateGradients` / `Lbfgs`), the energy-convergence threshold, and a
+  `Constraints` set — fix atoms (whole, or a single `Axis`), restrain distances /
+  angles / torsions, ignore atoms, and tune the restraint force. `minimize`
+  returns the whole minimization **trajectory** as an iterator of `OptStep`
+  frames (cumulative step, energy, coordinates); `optimize_geometry_with` just
+  returns the final energy.
 
 > `generate_3d` uses the fast fragment-builder path. Distance-geometry
 > generation, which needs Eigen, is also available now that Eigen is enabled.
+>
+> A minimization runs as one atomic operation (OpenBabel keeps force-field state
+> in shared/static members), so `minimize` computes the whole trajectory eagerly
+> and leaves the molecule at the final geometry. Only the **energy** convergence
+> criterion is tunable — OpenBabel 3.2.1 fixes the gradient criterion internally.
+> The `Lbfgs` algorithm is rejected with the `UFF` force field specifically (that
+> pairing corrupts memory in the vendored OpenBabel); use `ConjugateGradients` or
+> `SteepestDescent` with UFF.
 
 Charges, atom chemistry & identifiers:
 

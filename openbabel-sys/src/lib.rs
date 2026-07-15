@@ -26,6 +26,10 @@ pub mod ffi {
         /// Opaque owner of a compiled `OBChemTsfm` (SMARTS→SMARTS transform).
         type Transform;
 
+        /// Opaque owner of an `OBFFConstraints` set (fixed atoms, distance /
+        /// angle / torsion restraints, ignored atoms).
+        type Constraints;
+
         /// OpenBabel release version, e.g. `"3.2.1"`.
         fn release_version() -> String;
 
@@ -274,6 +278,57 @@ pub mod ffi {
         fn mol_vibration_frequencies(mol: &Molecule) -> Vec<f64>;
         /// Vibrational IR intensities (km/mol); empty unless present.
         fn mol_vibration_intensities(mol: &Molecule) -> Vec<f64>;
+
+        /// All atom coordinates flattened as `[x0,y0,z0, x1,y1,z1, …]`.
+        fn mol_coordinates(mol: &Molecule) -> Vec<f64>;
+
+        // Force-field constraints (atom indices 0-based).
+        /// Create an empty constraint set.
+        fn constraints_new() -> UniquePtr<Constraints>;
+        fn constraints_add_ignore(c: Pin<&mut Constraints>, atom: u32);
+        fn constraints_add_atom(c: Pin<&mut Constraints>, atom: u32);
+        fn constraints_add_atom_x(c: Pin<&mut Constraints>, atom: u32);
+        fn constraints_add_atom_y(c: Pin<&mut Constraints>, atom: u32);
+        fn constraints_add_atom_z(c: Pin<&mut Constraints>, atom: u32);
+        fn constraints_add_distance(c: Pin<&mut Constraints>, a: u32, b: u32, length: f64);
+        fn constraints_add_angle(c: Pin<&mut Constraints>, a: u32, b: u32, d: u32, angle: f64);
+        fn constraints_add_torsion(
+            c: Pin<&mut Constraints>,
+            a: u32,
+            b: u32,
+            d: u32,
+            e: u32,
+            torsion: f64,
+        );
+        fn constraints_set_factor(c: Pin<&mut Constraints>, factor: f64);
+
+        // Geometry optimization. Each call runs the whole minimization atomically
+        // (the safe wrapper holds the global lock for its full duration) so the
+        // shared static constraint state can't be corrupted by a concurrent run.
+        // `algorithm` is 0 = steepest descent, 1 = conjugate gradients, 2 = L-BFGS.
+        /// Run to completion; write final coordinates to `mol` and return the
+        /// final energy. Sets `ok` false if the force field is unknown / setup fails.
+        fn optimizer_run_to_end(
+            mol: Pin<&mut Molecule>,
+            ff_id: &str,
+            algorithm: u32,
+            steps: u32,
+            econv: f64,
+            constraints: &Constraints,
+            ok: &mut bool,
+        ) -> f64;
+        /// Run to completion recording a frame every `frame_interval` steps;
+        /// flattened as repeated `[energy, x0,y0,z0, …]` (`1 + 3·num_atoms` each).
+        /// `mol` ends at the final geometry. Empty on unknown FF / setup failure.
+        fn optimizer_run_trajectory(
+            mol: Pin<&mut Molecule>,
+            ff_id: &str,
+            algorithm: u32,
+            steps: u32,
+            econv: f64,
+            constraints: &Constraints,
+            frame_interval: u32,
+        ) -> Vec<f64>;
     }
 }
 

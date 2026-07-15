@@ -963,4 +963,187 @@ rust::Vec<double> mol_vibration_intensities(const Molecule &mol) {
   return out;
 }
 
+// --- Bulk coordinates ----------------------------------------------------
+
+rust::Vec<double> mol_coordinates(const Molecule &mol) {
+  rust::Vec<double> out;
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    unsigned int n = m.NumAtoms();
+    out.reserve(n * 3);
+    for (unsigned int i = 1; i <= n; ++i) {  // OBMol atoms are 1-based
+      OpenBabel::OBAtom *a = m.GetAtom(static_cast<int>(i));
+      if (!a) continue;
+      out.push_back(a->GetX());
+      out.push_back(a->GetY());
+      out.push_back(a->GetZ());
+    }
+  } catch (...) {
+  }
+  return out;
+}
+
+// --- Force-field constraints ---------------------------------------------
+// OBFFConstraints uses 1-based atom indices; the Rust API is 0-based, so add 1.
+
+std::unique_ptr<Constraints> constraints_new() {
+  return std::unique_ptr<Constraints>(new Constraints());
+}
+void constraints_add_ignore(Constraints &c, uint32_t atom) {
+  c.c.AddIgnore(static_cast<int>(atom) + 1);
+}
+void constraints_add_atom(Constraints &c, uint32_t atom) {
+  c.c.AddAtomConstraint(static_cast<int>(atom) + 1);
+}
+void constraints_add_atom_x(Constraints &c, uint32_t atom) {
+  c.c.AddAtomXConstraint(static_cast<int>(atom) + 1);
+}
+void constraints_add_atom_y(Constraints &c, uint32_t atom) {
+  c.c.AddAtomYConstraint(static_cast<int>(atom) + 1);
+}
+void constraints_add_atom_z(Constraints &c, uint32_t atom) {
+  c.c.AddAtomZConstraint(static_cast<int>(atom) + 1);
+}
+void constraints_add_distance(Constraints &c, uint32_t a, uint32_t b, double length) {
+  c.c.AddDistanceConstraint(static_cast<int>(a) + 1, static_cast<int>(b) + 1, length);
+}
+void constraints_add_angle(Constraints &c, uint32_t a, uint32_t b, uint32_t d, double angle) {
+  c.c.AddAngleConstraint(static_cast<int>(a) + 1, static_cast<int>(b) + 1,
+                         static_cast<int>(d) + 1, angle);
+}
+void constraints_add_torsion(Constraints &c, uint32_t a, uint32_t b, uint32_t d,
+                             uint32_t e, double torsion) {
+  c.c.AddTorsionConstraint(static_cast<int>(a) + 1, static_cast<int>(b) + 1,
+                           static_cast<int>(d) + 1, static_cast<int>(e) + 1, torsion);
+}
+void constraints_set_factor(Constraints &c, double factor) {
+  c.c.SetFactor(factor);
+}
+
+// --- Geometry optimization -----------------------------------------------
+
+namespace {
+// Set up the force-field plugin singleton over `mol` with `constraints`. Returns
+// the singleton (NOT owned — never delete it), or nullptr on unknown force field
+// / setup failure.
+//
+// We use the shared singleton, matching `mol_optimize` / `mol_energy`: the safe
+// wrapper serializes every OpenBabel call and runs each whole optimization as one
+// atomic call, so the singleton's per-run state is used entirely within one lock
+// hold. (Private MakeNewInstance() instances are avoided here — creating and
+// destroying them concurrently with molecule teardown has proven to corrupt the
+// heap.)
+//
+// Constraints are installed with an explicit SetConstraints() AFTER Setup(),
+// rather than via the two-argument Setup(mol, constraints), on purpose:
+// OBForceField::Setup caches its previous setup and, when IsSetupNeeded() sees a
+// topologically identical molecule, takes a fast path that silently keeps the
+// PREVIOUS constraints. SetConstraints() unconditionally installs ours (and
+// re-runs the term setup when the ignore set changes), so restraints are applied
+// correctly no matter what was optimized just before.
+OpenBabel::OBForceField *setup_forcefield(OpenBabel::OBMol &mol, const std::string &ff_id,
+                                          OpenBabel::OBFFConstraints &constraints) {
+  OpenBabel::OBForceField *ff = find_forcefield(ff_id);
+  if (!ff) return nullptr;
+  if (!ff->Setup(mol)) return nullptr;
+  ff->SetConstraints(constraints);
+  return ff;
+}
+void ff_initialize(OpenBabel::OBForceField *ff, uint32_t algorithm, int steps, double econv) {
+  switch (algorithm) {
+    case 1:
+      ff->ConjugateGradientsInitialize(steps, econv);
+      break;
+    case 2:
+      ff->LBFGSInitialize(steps, econv);
+      break;
+    case 0:
+    default:
+      ff->SteepestDescentInitialize(steps, econv);
+      break;
+  }
+}
+bool ff_take_steps(OpenBabel::OBForceField *ff, uint32_t algorithm, int n) {
+  switch (algorithm) {
+    case 1:
+      return ff->ConjugateGradientsTakeNSteps(n);
+    case 2:
+      return ff->LBFGSTakeNSteps(n);
+    case 0:
+    default:
+      return ff->SteepestDescentTakeNSteps(n);
+  }
+}
+// Clear the shared static constraint set so later unconstrained force-field
+// calls (mol_energy / mol_optimize) are not tripped up by our restraints. The
+// force field is the shared singleton and must NOT be deleted.
+void ff_finish(OpenBabel::OBForceField *ff) {
+  if (!ff) return;
+  try {
+    OpenBabel::OBFFConstraints empty;
+    ff->SetConstraints(empty);
+  } catch (...) {
+  }
+}
+}  // namespace
+
+double optimizer_run_to_end(Molecule &mol, rust::Str ff_id, uint32_t algorithm,
+                            uint32_t steps, double econv, const Constraints &constraints,
+                            bool &ok) {
+  OpenBabel::OBForceField *ff = nullptr;
+  try {
+    ff = setup_forcefield(mol.mol, to_std(ff_id), const_cast<Constraints &>(constraints).c);
+    if (!ff) {
+      ok = false;
+      return std::nan("");
+    }
+    int n = static_cast<int>(steps);
+    ff_initialize(ff, algorithm, n, econv);
+    while (ff_take_steps(ff, algorithm, n)) {
+    }
+    ff->GetCoordinates(mol.mol);
+    double e = ff->Energy(false);
+    ff_finish(ff);
+    ok = true;
+    return e;
+  } catch (...) {
+    ff_finish(ff);
+    ok = false;
+    return std::nan("");
+  }
+}
+
+rust::Vec<double> optimizer_run_trajectory(Molecule &mol, rust::Str ff_id, uint32_t algorithm,
+                                           uint32_t steps, double econv,
+                                           const Constraints &constraints,
+                                           uint32_t frame_interval) {
+  rust::Vec<double> out;
+  OpenBabel::OBForceField *ff = nullptr;
+  try {
+    ff = setup_forcefield(mol.mol, to_std(ff_id), const_cast<Constraints &>(constraints).c);
+    if (!ff) return out;
+    int budget = static_cast<int>(steps);
+    int chunk = frame_interval == 0 ? 1 : static_cast<int>(frame_interval);
+    ff_initialize(ff, algorithm, budget, econv);
+    bool more = true;
+    while (more) {
+      more = ff_take_steps(ff, algorithm, chunk);
+      ff->GetCoordinates(mol.mol);
+      out.push_back(ff->Energy(false));  // frame = [energy, x0,y0,z0, ...]
+      unsigned int natoms = mol.mol.NumAtoms();
+      for (unsigned int i = 1; i <= natoms; ++i) {
+        OpenBabel::OBAtom *a = mol.mol.GetAtom(static_cast<int>(i));
+        if (!a) continue;
+        out.push_back(a->GetX());
+        out.push_back(a->GetY());
+        out.push_back(a->GetZ());
+      }
+    }
+    ff_finish(ff);
+  } catch (...) {
+    ff_finish(ff);
+  }
+  return out;
+}
+
 }  // namespace ob_shim

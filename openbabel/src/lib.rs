@@ -11,12 +11,20 @@
 //! mol.add_hydrogens();
 //! println!("{}", mol.write("can").unwrap()); // canonical SMILES
 //! ```
+//!
+//! A prose guide (architecture, feature tour, key concepts) — available in both
+//! English and Japanese — lives at
+//! <https://indigocarmine.github.io/openbabel_rs/>.
+#![doc(html_root_url = "https://indigocarmine.github.io/openbabel_rs/api/")]
+#![deny(missing_docs)]
 
 mod atom;
 mod bond;
+mod constraints;
 pub mod elements;
 mod error;
 mod fingerprint;
+mod minimize;
 mod mol;
 mod residue;
 mod smarts;
@@ -24,8 +32,10 @@ mod transform;
 
 pub use atom::{Atom, Winding};
 pub use bond::Bond;
+pub use constraints::{Axis, Constraints};
 pub use error::Error;
 pub use fingerprint::Fingerprint;
+pub use minimize::{Algorithm, Minimizer, OptStep, Optimization};
 pub use mol::{Molecule, SvgOptions};
 pub use residue::Residue;
 pub use smarts::SmartsPattern;

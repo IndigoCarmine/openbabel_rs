@@ -265,10 +265,49 @@ impl Molecule {
     /// Energy-minimize the geometry in place using `steps` conjugate-gradient
     /// steps of the named force field. Returns the final energy, or `None` if
     /// the force field is unknown or setup fails.
+    ///
+    /// For control over the algorithm, convergence, or constraints — or to
+    /// stream the trajectory — use [`optimize_geometry_with`](Self::optimize_geometry_with)
+    /// / [`minimize`](Self::minimize) with a [`Minimizer`](crate::Minimizer).
     pub fn optimize_geometry(&mut self, forcefield: &str, steps: u32) -> Option<f64> {
         let mut ok = true;
         let e = with_ob(|| ffi::mol_optimize(self.inner.pin_mut(), forcefield, steps, &mut ok));
         if ok { Some(e) } else { None }
+    }
+
+    /// Energy-minimize the geometry in place under a [`Minimizer`](crate::Minimizer)
+    /// configuration — choosing the algorithm (steepest descent / conjugate
+    /// gradients / L-BFGS), convergence threshold, and constraints — and return
+    /// the final energy, or `None` if the force field is unknown or setup fails.
+    ///
+    /// Runs to completion without recording a trajectory; use
+    /// [`minimize`](Self::minimize) to stream one instead. Only meaningful once
+    /// the molecule has 3D coordinates (see [`generate_3d`](Self::generate_3d)).
+    pub fn optimize_geometry_with(&mut self, config: &crate::Minimizer) -> Option<f64> {
+        config.run(self)
+    }
+
+    /// Minimize the geometry and return its step-by-step trajectory.
+    ///
+    /// Runs the whole minimization under a [`Minimizer`](crate::Minimizer)
+    /// configuration and returns an [`Optimization`](crate::Optimization) — an
+    /// iterator over the recorded [`OptStep`](crate::OptStep) frames (step count,
+    /// energy, coordinates), one per `steps_per_frame` steps until convergence or
+    /// the step budget. The molecule is left holding the final geometry.
+    ///
+    /// The minimization runs eagerly when this is called (OpenBabel's shared
+    /// force-field state means a run must be one atomic operation); the returned
+    /// iterator replays the captured frames and does not borrow the molecule.
+    ///
+    /// ```no_run
+    /// # use openbabel::{Minimizer, Molecule};
+    /// # let mut mol = Molecule::parse("CCO", "smi").unwrap();
+    /// # mol.generate_3d();
+    /// let cfg = Minimizer::new("MMFF94");
+    /// let trajectory: Vec<_> = mol.minimize(&cfg).collect();
+    /// ```
+    pub fn minimize(&mut self, config: &crate::Minimizer) -> crate::Optimization {
+        crate::Optimization::new(self, config)
     }
 
     /// Generate 3D coordinates in place (like `obabel --gen3d`, "medium"
