@@ -27,17 +27,19 @@ mod fingerprint;
 mod minimize;
 mod mol;
 mod residue;
+mod ring;
 mod smarts;
 mod transform;
 
-pub use atom::{Atom, Winding};
-pub use bond::Bond;
+pub use atom::{Atom, AtomMut, Winding};
+pub use bond::{Bond, BondMut};
 pub use constraints::{Axis, Constraints};
 pub use error::Error;
 pub use fingerprint::Fingerprint;
 pub use minimize::{Algorithm, Minimizer, OptStep, Optimization};
 pub use mol::{Molecule, SvgOptions};
 pub use residue::Residue;
+pub use ring::Ring;
 pub use smarts::SmartsPattern;
 pub use transform::Transform;
 
@@ -102,6 +104,21 @@ pub fn forcefield_energy_unit(forcefield: &str) -> Option<String> {
     } else {
         Some(unit)
     }
+}
+
+/// Serialize several molecules into one multi-record document in `format`.
+///
+/// Each molecule is written with [`Molecule::write`] and the records are
+/// concatenated — for `"sdf"` this yields a valid multi-molecule SDF, for
+/// `"smi"` one SMILES per line, and so on. The inverse of
+/// [`Molecule::parse_many`]. Returns [`Error::UnknownFormat`] if `format` is
+/// unknown.
+pub fn write_many(molecules: &[Molecule], format: &str) -> Result<String, Error> {
+    let mut out = String::new();
+    for mol in molecules {
+        out.push_str(&mol.write(format)?);
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

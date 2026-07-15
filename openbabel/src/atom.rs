@@ -224,3 +224,73 @@ impl std::fmt::Debug for Atom<'_> {
             .finish()
     }
 }
+
+/// A mutable handle to an atom, for editing its properties.
+///
+/// Obtained from [`Molecule::atom_mut`](crate::Molecule::atom_mut); it borrows
+/// the molecule mutably, so only one exists at a time. The setters return
+/// `&mut Self` for chaining.
+pub struct AtomMut<'m> {
+    mol: &'m mut crate::Molecule,
+    /// OpenBabel's 1-based atom index.
+    ob_idx: u32,
+}
+
+impl<'m> AtomMut<'m> {
+    pub(crate) fn new(mol: &'m mut crate::Molecule, ob_idx: u32) -> Self {
+        AtomMut { mol, ob_idx }
+    }
+
+    /// 0-based index of this atom within the molecule.
+    pub fn index(&self) -> u32 {
+        self.ob_idx - 1
+    }
+
+    /// Set the atomic number (element).
+    pub fn set_atomic_number(&mut self, atomic_number: u32) -> &mut Self {
+        crate::with_ob(|| ffi::atom_set_atomic_num(self.mol.as_inner_pin_mut(), self.ob_idx, atomic_number));
+        self
+    }
+
+    /// Set the formal charge.
+    pub fn set_formal_charge(&mut self, charge: i32) -> &mut Self {
+        crate::with_ob(|| ffi::atom_set_formal_charge(self.mol.as_inner_pin_mut(), self.ob_idx, charge));
+        self
+    }
+
+    /// Set the Cartesian coordinates.
+    pub fn set_position(&mut self, x: f64, y: f64, z: f64) -> &mut Self {
+        crate::with_ob(|| ffi::atom_set_position(self.mol.as_inner_pin_mut(), self.ob_idx, x, y, z));
+        self
+    }
+
+    /// Set the isotope number (`0` = the element's default isotopic mix).
+    pub fn set_isotope(&mut self, isotope: u32) -> &mut Self {
+        crate::with_ob(|| ffi::atom_set_isotope(self.mol.as_inner_pin_mut(), self.ob_idx, isotope));
+        self
+    }
+
+    /// Set the spin multiplicity (0 = default, 2 = radical, 3 = triplet, …).
+    pub fn set_spin_multiplicity(&mut self, spin: i32) -> &mut Self {
+        crate::with_ob(|| ffi::atom_set_spin_multiplicity(self.mol.as_inner_pin_mut(), self.ob_idx, spin));
+        self
+    }
+
+    /// Set the partial (fractional) atomic charge.
+    pub fn set_partial_charge(&mut self, charge: f64) -> &mut Self {
+        crate::with_ob(|| ffi::atom_set_partial_charge(self.mol.as_inner_pin_mut(), self.ob_idx, charge));
+        self
+    }
+
+    /// Set OpenBabel's internal atom type string (e.g. `"C3"`).
+    pub fn set_type(&mut self, type_name: &str) -> &mut Self {
+        crate::with_ob(|| ffi::atom_set_type(self.mol.as_inner_pin_mut(), self.ob_idx, type_name));
+        self
+    }
+
+    /// Set the number of implicit hydrogens.
+    pub fn set_implicit_hydrogens(&mut self, count: u32) -> &mut Self {
+        crate::with_ob(|| ffi::atom_set_implicit_h(self.mol.as_inner_pin_mut(), self.ob_idx, count));
+        self
+    }
+}

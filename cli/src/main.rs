@@ -52,6 +52,15 @@ fn main() {
         mol.cistrans_stereo_count(),
     );
 
+    // Rings (T11): SSSR sizes and aromaticity ("a" = aromatic).
+    let rings: Vec<String> = mol
+        .rings()
+        .map(|r| format!("{}{}", r.size(), if r.is_aromatic() { "a" } else { "" }))
+        .collect();
+    if !rings.is_empty() {
+        println!("Ring sizes:        [{}]", rings.join(", "));
+    }
+
     // 2D depiction (T6): render the skeletal structure to SVG (before adding
     // explicit H, for a cleaner drawing). A second CLI argument saves it.
     if let Some(svg) = mol.to_svg() {

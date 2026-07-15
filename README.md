@@ -20,7 +20,7 @@ build the reference locally with `cargo doc --workspace --no-deps --open`.
 | Crate           | Role                                                                 |
 | --------------- | ------------------------------------------------------------------- |
 | `openbabel-sys` | Low-level FFI: a `cxx` bridge + C++ shim; `build.rs` builds OpenBabel from source and links it. |
-| `openbabel`     | Safe, idiomatic API: `Molecule`, `Atom`, `Bond`, `Residue`, `SmartsPattern`, `Fingerprint`, `Transform`, `Minimizer` / `Constraints`, the `elements` module, `Error`. |
+| `openbabel`     | Safe, idiomatic API: `Molecule`, `Atom`, `Bond`, `Residue`, `Ring`, `SmartsPattern`, `Fingerprint`, `Transform`, `Minimizer` / `Constraints`, the `elements` module, `Error`. |
 | `cli`           | `openbabel-demo` — a small SMILES-inspection demo.                   |
 
 Dependencies are vendored as git submodules: OpenBabel at `vendor/openbabel-src`
@@ -154,6 +154,27 @@ Spectra:
   for similarity work. `Molecule::vibration_frequencies` /
   `vibration_intensities` read vibrational data when the molecule was parsed from
   a computational-chemistry output that carries it.
+
+Construction & editing:
+
+- Build and mutate molecules, not just read them: `Molecule::add_atom` /
+  `add_bond` / `delete_atom` / `delete_bond`, `begin_modify` / `end_modify` to
+  batch edits, and `clear`. Edit atoms through `Molecule::atom_mut` (an
+  `AtomMut`: `set_atomic_number`, `set_formal_charge`, `set_position`,
+  `set_isotope`, `set_spin_multiplicity`, `set_partial_charge`, `set_type`,
+  `set_implicit_hydrogens`) and bonds through `bond_mut` (a `BondMut`:
+  `set_order`, `set_length`).
+- Geometry & perception: `translate`, `set_coordinates`, `set_dimension`,
+  `connect_the_dots` (infer bonds from 3D coordinates) then
+  `perceive_bond_orders`; `add_polar_hydrogens`, `add_hydrogens_for_ph` (pH-based
+  (de)protonation), `convert_dative_bonds`, `assign_spin_multiplicity`.
+
+Rings & multi-molecule I/O:
+
+- Ring perception (SSSR): `Molecule::rings` / `ring` yield a [`Ring`] with
+  `size`, `atom_indices`, and `is_aromatic`.
+- Read or write many molecules at once: `Molecule::parse_many` (every record of
+  a multi-SDF, one SMILES per line, …) and the free `write_many`.
 
 ## Thread safety
 

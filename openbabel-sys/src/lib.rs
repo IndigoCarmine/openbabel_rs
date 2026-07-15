@@ -329,6 +329,50 @@ pub mod ffi {
             constraints: &Constraints,
             frame_interval: u32,
         ) -> Vec<f64>;
+
+        // Molecule construction & editing.
+        /// Add an atom of `atomic_num`; returns its 0-based index.
+        fn mol_add_atom(mol: Pin<&mut Molecule>, atomic_num: u32) -> u32;
+        /// Bond 0-based atoms `begin`–`end` with `order`; false if out of range.
+        fn mol_add_bond(mol: Pin<&mut Molecule>, begin: u32, end: u32, order: u32) -> bool;
+        fn mol_delete_atom(mol: Pin<&mut Molecule>, idx: u32) -> bool;
+        fn mol_delete_bond(mol: Pin<&mut Molecule>, idx: u32) -> bool;
+        fn mol_begin_modify(mol: Pin<&mut Molecule>);
+        fn mol_end_modify(mol: Pin<&mut Molecule>);
+        fn mol_clear(mol: Pin<&mut Molecule>);
+        fn mol_translate(mol: Pin<&mut Molecule>, x: f64, y: f64, z: f64);
+        /// Overwrite all coordinates; false unless `coords.len() == 3·num_atoms`.
+        fn mol_set_coordinates(mol: Pin<&mut Molecule>, coords: &[f64]) -> bool;
+        fn mol_set_dimension(mol: Pin<&mut Molecule>, dim: u32);
+        fn mol_connect_the_dots(mol: Pin<&mut Molecule>);
+        fn mol_perceive_bond_orders(mol: Pin<&mut Molecule>);
+        fn mol_add_polar_hydrogens(mol: Pin<&mut Molecule>) -> bool;
+        fn mol_convert_dative_bonds(mol: Pin<&mut Molecule>) -> bool;
+        fn mol_assign_spin_multiplicity(mol: Pin<&mut Molecule>) -> bool;
+        fn mol_add_hydrogens_ph(mol: Pin<&mut Molecule>, ph: f64) -> bool;
+
+        // Atom setters (idx is 1-based).
+        fn atom_set_atomic_num(mol: Pin<&mut Molecule>, idx: u32, atomic_num: u32);
+        fn atom_set_formal_charge(mol: Pin<&mut Molecule>, idx: u32, charge: i32);
+        fn atom_set_position(mol: Pin<&mut Molecule>, idx: u32, x: f64, y: f64, z: f64);
+        fn atom_set_isotope(mol: Pin<&mut Molecule>, idx: u32, isotope: u32);
+        fn atom_set_spin_multiplicity(mol: Pin<&mut Molecule>, idx: u32, spin: i32);
+        fn atom_set_partial_charge(mol: Pin<&mut Molecule>, idx: u32, charge: f64);
+        fn atom_set_type(mol: Pin<&mut Molecule>, idx: u32, type_name: &str);
+        fn atom_set_implicit_h(mol: Pin<&mut Molecule>, idx: u32, count: u32);
+
+        // Bond setters (idx is 0-based).
+        fn bond_set_order(mol: Pin<&mut Molecule>, idx: u32, order: u32);
+        fn bond_set_length(mol: Pin<&mut Molecule>, idx: u32, length: f64) -> bool;
+
+        /// Read EVERY record from `data` in `format` (multi-record SDF, one
+        /// SMILES per line, …).
+        fn mol_read_many(format: &str, data: &str) -> UniquePtr<CxxVector<Molecule>>;
+
+        // Ring access (SSSR; ring_idx is 0-based, 0..mol_num_rings).
+        fn ring_size(mol: &Molecule, ring_idx: u32) -> u32;
+        fn ring_atom_indices(mol: &Molecule, ring_idx: u32) -> Vec<u32>;
+        fn ring_is_aromatic(mol: &Molecule, ring_idx: u32) -> bool;
     }
 }
 

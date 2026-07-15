@@ -3,10 +3,11 @@
 use cxx::UniquePtr;
 use openbabel_sys::ffi;
 
-use crate::atom::Atom;
-use crate::bond::Bond;
+use crate::atom::{Atom, AtomMut};
+use crate::bond::{Bond, BondMut};
 use crate::error::Error;
 use crate::residue::Residue;
+use crate::ring::Ring;
 use crate::with_ob;
 
 /// Rendering options for [`Molecule::to_svg_with`].
@@ -51,6 +52,23 @@ impl Molecule {
         } else {
             Ok(Molecule { inner })
         }
+    }
+
+    /// Parse **every** record from `data` in `format` — a multi-record SDF, one
+    /// SMILES per line, a multi-model PDB, etc.
+    ///
+    /// Returns one [`Molecule`] per record, in file order. The vector is empty
+    /// if `format` is unknown or `data` holds no records; reading stops at the
+    /// first record that fails to parse.
+    pub fn parse_many(data: &str, format: &str) -> Vec<Molecule> {
+        with_ob(|| {
+            ffi::mol_read_many(format, data)
+                .iter()
+                .map(|m| Molecule {
+                    inner: ffi::mol_clone(m),
+                })
+                .collect()
+        })
     }
 
     /// Serialize this molecule to `format`, returning the text.
@@ -509,6 +527,145 @@ impl Molecule {
     pub fn residues(&self) -> impl Iterator<Item = Residue<'_>> + '_ {
         let mol = self.as_inner();
         (0..self.num_residues()).map(move |i| Residue::new(mol, i))
+    }
+
+    /// The ring at 0-based `index` (into the SSSR — smallest set of smallest
+    /// rings), or `None` if out of range. See [`num_rings`](Self::num_rings).
+    pub fn ring(&self, index: u32) -> Option<Ring<'_>> {
+        if index < self.num_rings() {
+            Some(Ring::new(self.as_inner(), index))
+        } else {
+            None
+        }
+    }
+
+    /// Iterate over the rings of the SSSR.
+    pub fn rings(&self) -> impl Iterator<Item = Ring<'_>> + '_ {
+        let mol = self.as_inner();
+        (0..self.num_rings()).map(move |i| Ring::new(mol, i))
+    }
+
+    // --- Construction & editing ------------------------------------------
+
+    /// Add an atom of atomic number `atomic_number` and return its 0-based
+    /// index. Wrap a batch of edits in [`begin_modify`](Self::begin_modify) /
+    /// [`end_modify`](Self::end_modify) to defer perception until the end.
+    pub fn add_atom(&mut self, atomic_number: u32) -> u32 {
+        with_ob(|| ffi::mol_add_atom(self.inner.pin_mut(), atomic_number))
+    }
+
+    /// Bond the atoms at 0-based indices `begin` and `end` with `order`
+    /// (1 = single, 2 = double, 3 = triple). Returns `false` if either index is
+    /// out of range.
+    pub fn add_bond(&mut self, begin: u32, end: u32, order: u32) -> bool {
+        with_ob(|| ffi::mol_add_bond(self.inner.pin_mut(), begin, end, order))
+    }
+
+    /// Delete the atom at 0-based `index` (and its bonds). Returns `false` if
+    /// out of range. Note that deletion renumbers later atoms.
+    pub fn delete_atom(&mut self, index: u32) -> bool {
+        with_ob(|| ffi::mol_delete_atom(self.inner.pin_mut(), index))
+    }
+
+    /// Delete the bond at 0-based `index`. Returns `false` if out of range.
+    pub fn delete_bond(&mut self, index: u32) -> bool {
+        with_ob(|| ffi::mol_delete_bond(self.inner.pin_mut(), index))
+    }
+
+    /// Suspend perception (aromaticity, rings, …) while a batch of structural
+    /// edits is applied; pair with [`end_modify`](Self::end_modify). Calls
+    /// nest. Building a molecule inside a modify block is much faster than
+    /// re-perceiving after every edit.
+    pub fn begin_modify(&mut self) {
+        with_ob(|| ffi::mol_begin_modify(self.inner.pin_mut()));
+    }
+
+    /// Resume perception after [`begin_modify`](Self::begin_modify).
+    pub fn end_modify(&mut self) {
+        with_ob(|| ffi::mol_end_modify(self.inner.pin_mut()));
+    }
+
+    /// Remove every atom and bond, leaving an empty molecule.
+    pub fn clear(&mut self) {
+        with_ob(|| ffi::mol_clear(self.inner.pin_mut()));
+    }
+
+    /// Translate every atom by `(dx, dy, dz)`.
+    pub fn translate(&mut self, dx: f64, dy: f64, dz: f64) {
+        with_ob(|| ffi::mol_translate(self.inner.pin_mut(), dx, dy, dz));
+    }
+
+    /// Overwrite all atom coordinates from a flat `[x0, y0, z0, x1, …]` slice.
+    /// Returns `false` unless `coords.len() == 3 * num_atoms`.
+    pub fn set_coordinates(&mut self, coords: &[f64]) -> bool {
+        with_ob(|| ffi::mol_set_coordinates(self.inner.pin_mut(), coords))
+    }
+
+    /// Set the coordinate dimension (0, 2, or 3). Mark a hand-built structure
+    /// as `3` before calling [`connect_the_dots`](Self::connect_the_dots),
+    /// which only runs on 3D structures.
+    pub fn set_dimension(&mut self, dimension: u32) {
+        with_ob(|| ffi::mol_set_dimension(self.inner.pin_mut(), dimension));
+    }
+
+    /// Infer connectivity (bonds) from 3D coordinates using covalent radii —
+    /// the counterpart to reading a coordinates-only format. Requires the
+    /// dimension to be 3 (see [`set_dimension`](Self::set_dimension)); follow
+    /// with [`perceive_bond_orders`](Self::perceive_bond_orders) to assign
+    /// orders.
+    pub fn connect_the_dots(&mut self) {
+        with_ob(|| ffi::mol_connect_the_dots(self.inner.pin_mut()));
+    }
+
+    /// Assign bond orders (single / double / triple, aromaticity) from the 3D
+    /// geometry and connectivity.
+    pub fn perceive_bond_orders(&mut self) {
+        with_ob(|| ffi::mol_perceive_bond_orders(self.inner.pin_mut()));
+    }
+
+    /// Add only polar hydrogens (those on N, O, P, S). Returns `false` on
+    /// failure.
+    pub fn add_polar_hydrogens(&mut self) -> bool {
+        with_ob(|| ffi::mol_add_polar_hydrogens(self.inner.pin_mut()))
+    }
+
+    /// Add hydrogens with pH-based (de)protonation: acidic/basic groups gain or
+    /// lose H as appropriate for `ph`. Returns `false` on failure.
+    pub fn add_hydrogens_for_ph(&mut self, ph: f64) -> bool {
+        with_ob(|| ffi::mol_add_hydrogens_ph(self.inner.pin_mut(), ph))
+    }
+
+    /// Convert dative/coordinate bonds to their charge-separated form (e.g. a
+    /// neutral nitro group to `-[N+](=O)[O-]`). Returns `false` if nothing
+    /// changed.
+    pub fn convert_dative_bonds(&mut self) -> bool {
+        with_ob(|| ffi::mol_convert_dative_bonds(self.inner.pin_mut()))
+    }
+
+    /// (Re)assign radical spin multiplicities from the atomic valences. Returns
+    /// `false` on failure.
+    pub fn assign_spin_multiplicity(&mut self) -> bool {
+        with_ob(|| ffi::mol_assign_spin_multiplicity(self.inner.pin_mut()))
+    }
+
+    /// A mutable handle to the atom at 0-based `index`, for setting its
+    /// properties, or `None` if out of range.
+    pub fn atom_mut(&mut self, index: u32) -> Option<AtomMut<'_>> {
+        if index < self.num_atoms() {
+            Some(AtomMut::new(self, index + 1)) // OpenBabel atoms are 1-based.
+        } else {
+            None
+        }
+    }
+
+    /// A mutable handle to the bond at 0-based `index`, or `None` if out of
+    /// range.
+    pub fn bond_mut(&mut self, index: u32) -> Option<BondMut<'_>> {
+        if index < self.num_bonds() {
+            Some(BondMut::new(self, index)) // OpenBabel bonds are 0-based.
+        } else {
+            None
+        }
     }
 
     /// Compute the Spectrophore™ descriptor.

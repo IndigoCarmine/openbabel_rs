@@ -1146,4 +1146,178 @@ rust::Vec<double> optimizer_run_trajectory(Molecule &mol, rust::Str ff_id, uint3
   return out;
 }
 
+// --- Molecule construction & editing --------------------------------------
+
+uint32_t mol_add_atom(Molecule &mol, uint32_t atomic_num) {
+  OpenBabel::OBAtom *a = mol.mol.NewAtom();
+  a->SetAtomicNum(static_cast<int>(atomic_num));
+  return static_cast<uint32_t>(a->GetIdx()) - 1;  // 0-based
+}
+bool mol_add_bond(Molecule &mol, uint32_t begin, uint32_t end, uint32_t order) {
+  try {
+    // OpenBabel bond endpoints are 1-based atom indices.
+    return mol.mol.AddBond(static_cast<int>(begin) + 1, static_cast<int>(end) + 1,
+                           static_cast<int>(order));
+  } catch (...) {
+    return false;
+  }
+}
+bool mol_delete_atom(Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = mol.mol.GetAtom(static_cast<int>(idx) + 1);
+  if (!a) return false;
+  return mol.mol.DeleteAtom(a);
+}
+bool mol_delete_bond(Molecule &mol, uint32_t idx) {
+  OpenBabel::OBBond *b = mol.mol.GetBond(static_cast<int>(idx));
+  if (!b) return false;
+  return mol.mol.DeleteBond(b);
+}
+void mol_begin_modify(Molecule &mol) { mol.mol.BeginModify(); }
+void mol_end_modify(Molecule &mol) { mol.mol.EndModify(); }
+void mol_clear(Molecule &mol) { mol.mol.Clear(); }
+void mol_translate(Molecule &mol, double x, double y, double z) {
+  mol.mol.Translate(OpenBabel::vector3(x, y, z));
+}
+bool mol_set_coordinates(Molecule &mol, rust::Slice<const double> coords) {
+  unsigned int n = mol.mol.NumAtoms();
+  if (coords.size() != static_cast<size_t>(n) * 3) return false;
+  if (n == 0) return true;
+  // OBMol::SetCoordinates copies into the existing conformer buffer when one is
+  // present, but ADOPTS the passed pointer (stores it in _vconf) when the
+  // molecule has no coordinates yet. So allocate on the heap and only free our
+  // buffer in the copy case; otherwise OpenBabel now owns it.
+  bool had_coords = mol.mol.GetCoordinates() != nullptr;
+  double *buf = new double[coords.size()];
+  std::copy(coords.begin(), coords.end(), buf);
+  mol.mol.SetCoordinates(buf);
+  if (had_coords) delete[] buf;
+  return true;
+}
+void mol_set_dimension(Molecule &mol, uint32_t dim) {
+  mol.mol.SetDimension(static_cast<unsigned short>(dim));
+}
+void mol_connect_the_dots(Molecule &mol) { mol.mol.ConnectTheDots(); }
+void mol_perceive_bond_orders(Molecule &mol) { mol.mol.PerceiveBondOrders(); }
+bool mol_add_polar_hydrogens(Molecule &mol) {
+  try {
+    return mol.mol.AddPolarHydrogens();
+  } catch (...) {
+    return false;
+  }
+}
+bool mol_convert_dative_bonds(Molecule &mol) {
+  try {
+    return mol.mol.ConvertDativeBonds();
+  } catch (...) {
+    return false;
+  }
+}
+bool mol_assign_spin_multiplicity(Molecule &mol) {
+  try {
+    return mol.mol.AssignSpinMultiplicity();
+  } catch (...) {
+    return false;
+  }
+}
+bool mol_add_hydrogens_ph(Molecule &mol, double ph) {
+  try {
+    return mol.mol.AddHydrogens(false, true, ph);
+  } catch (...) {
+    return false;
+  }
+}
+
+// --- Atom setters (idx is 1-based) ----------------------------------------
+
+void atom_set_atomic_num(Molecule &mol, uint32_t idx, uint32_t atomic_num) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (a) a->SetAtomicNum(static_cast<int>(atomic_num));
+}
+void atom_set_formal_charge(Molecule &mol, uint32_t idx, int charge) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (a) a->SetFormalCharge(charge);
+}
+void atom_set_position(Molecule &mol, uint32_t idx, double x, double y, double z) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (a) a->SetVector(x, y, z);
+}
+void atom_set_isotope(Molecule &mol, uint32_t idx, uint32_t isotope) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (a) a->SetIsotope(isotope);
+}
+void atom_set_spin_multiplicity(Molecule &mol, uint32_t idx, int spin) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (a) a->SetSpinMultiplicity(static_cast<short>(spin));
+}
+void atom_set_partial_charge(Molecule &mol, uint32_t idx, double charge) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (a) a->SetPartialCharge(charge);
+}
+void atom_set_type(Molecule &mol, uint32_t idx, rust::Str type_name) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (a) a->SetType(to_std(type_name));
+}
+void atom_set_implicit_h(Molecule &mol, uint32_t idx, uint32_t count) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (a) a->SetImplicitHCount(count);
+}
+
+// --- Bond setters (idx is 0-based) ----------------------------------------
+
+void bond_set_order(Molecule &mol, uint32_t idx, uint32_t order) {
+  auto *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  if (b) b->SetBondOrder(static_cast<int>(order));
+}
+bool bond_set_length(Molecule &mol, uint32_t idx, double length) {
+  auto *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  if (!b) return false;
+  b->SetLength(length);
+  return true;
+}
+
+// --- Multi-molecule input -------------------------------------------------
+
+std::unique_ptr<std::vector<Molecule>> mol_read_many(rust::Str format, rust::Str data) {
+  auto out = std::unique_ptr<std::vector<Molecule>>(new std::vector<Molecule>());
+  try {
+    OpenBabel::OBConversion conv;
+    if (!conv.SetInFormat(to_std(format).c_str())) return out;
+    std::istringstream iss(to_std(data));
+    conv.SetInStream(&iss, false);
+    while (true) {
+      Molecule m;
+      if (!conv.Read(&m.mol)) break;
+      out->push_back(std::move(m));
+    }
+  } catch (...) {
+  }
+  return out;
+}
+
+// --- Ring access (SSSR; ring_idx is 0-based) ------------------------------
+
+namespace {
+OpenBabel::OBRing *ring_at(const Molecule &mol, uint32_t ring_idx) {
+  std::vector<OpenBabel::OBRing *> &rings = const_cast<Molecule &>(mol).mol.GetSSSR();
+  if (ring_idx >= rings.size()) return nullptr;
+  return rings[ring_idx];
+}
+}  // namespace
+
+uint32_t ring_size(const Molecule &mol, uint32_t ring_idx) {
+  OpenBabel::OBRing *r = ring_at(mol, ring_idx);
+  return r ? static_cast<uint32_t>(r->Size()) : 0;
+}
+rust::Vec<uint32_t> ring_atom_indices(const Molecule &mol, uint32_t ring_idx) {
+  rust::Vec<uint32_t> out;
+  OpenBabel::OBRing *r = ring_at(mol, ring_idx);
+  if (!r) return out;
+  for (int idx : r->_path) out.push_back(static_cast<uint32_t>(idx) - 1);  // 0-based
+  return out;
+}
+bool ring_is_aromatic(const Molecule &mol, uint32_t ring_idx) {
+  OpenBabel::OBRing *r = ring_at(mol, ring_idx);
+  return r ? r->IsAromatic() : false;
+}
+
 }  // namespace ob_shim

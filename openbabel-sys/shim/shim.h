@@ -343,4 +343,66 @@ rust::Vec<double> optimizer_run_trajectory(Molecule &mol, rust::Str ff_id,
                                            double econv, const Constraints &constraints,
                                            uint32_t frame_interval);
 
+// --- Molecule construction & editing --------------------------------------
+// Add a new atom of `atomic_num`; returns its 0-based index.
+uint32_t mol_add_atom(Molecule &mol, uint32_t atomic_num);
+// Add a bond between 0-based atoms `begin` and `end` with `order` (1/2/3);
+// false if the indices are out of range.
+bool mol_add_bond(Molecule &mol, uint32_t begin, uint32_t end, uint32_t order);
+// Delete atom / bond at a 0-based index; false if out of range.
+bool mol_delete_atom(Molecule &mol, uint32_t idx);
+bool mol_delete_bond(Molecule &mol, uint32_t idx);
+// Suspend / resume perception around a batch of edits (nestable).
+void mol_begin_modify(Molecule &mol);
+void mol_end_modify(Molecule &mol);
+// Remove every atom and bond, leaving an empty molecule.
+void mol_clear(Molecule &mol);
+// Translate every atom by (x, y, z).
+void mol_translate(Molecule &mol, double x, double y, double z);
+// Overwrite all coordinates from a flat [x0,y0,z0, ...] slice; false unless its
+// length is exactly 3 * num_atoms.
+bool mol_set_coordinates(Molecule &mol, rust::Slice<const double> coords);
+// Set the coordinate dimension (0, 2, or 3). Needed to mark a hand-built
+// structure as 3D before mol_connect_the_dots (which only runs when dim == 3).
+void mol_set_dimension(Molecule &mol, uint32_t dim);
+// Infer connectivity from 3D coordinates (covalent radii), then bond orders.
+void mol_connect_the_dots(Molecule &mol);
+void mol_perceive_bond_orders(Molecule &mol);
+// Add only polar hydrogens (on N/O/P/S). false on failure.
+bool mol_add_polar_hydrogens(Molecule &mol);
+// Convert dative bonds (e.g. -[N+]([O-])= nitro to neutral dative form). false
+// if nothing changed.
+bool mol_convert_dative_bonds(Molecule &mol);
+// (Re)assign radical spin multiplicities from valence. false on failure.
+bool mol_assign_spin_multiplicity(Molecule &mol);
+// Add hydrogens with pH-based (de)protonation correction at `ph`. false on
+// failure.
+bool mol_add_hydrogens_ph(Molecule &mol, double ph);
+
+// --- Atom setters (idx is 1-based, as elsewhere) --------------------------
+void atom_set_atomic_num(Molecule &mol, uint32_t idx, uint32_t atomic_num);
+void atom_set_formal_charge(Molecule &mol, uint32_t idx, int charge);
+void atom_set_position(Molecule &mol, uint32_t idx, double x, double y, double z);
+void atom_set_isotope(Molecule &mol, uint32_t idx, uint32_t isotope);
+void atom_set_spin_multiplicity(Molecule &mol, uint32_t idx, int spin);
+void atom_set_partial_charge(Molecule &mol, uint32_t idx, double charge);
+void atom_set_type(Molecule &mol, uint32_t idx, rust::Str type_name);
+void atom_set_implicit_h(Molecule &mol, uint32_t idx, uint32_t count);
+
+// --- Bond setters (idx is 0-based) ----------------------------------------
+void bond_set_order(Molecule &mol, uint32_t idx, uint32_t order);
+// Move the end atom so the bond has `length` (keeps the begin atom fixed).
+bool bond_set_length(Molecule &mol, uint32_t idx, double length);
+
+// --- Multi-molecule input -------------------------------------------------
+// Read EVERY record from `data` in `format` (e.g. multi-record SDF, one SMILES
+// per line). Empty on unknown format; stops at the first record that fails.
+std::unique_ptr<std::vector<Molecule>> mol_read_many(rust::Str format, rust::Str data);
+
+// --- Ring access (SSSR; ring_idx is 0-based, 0..mol_num_rings) -------------
+uint32_t ring_size(const Molecule &mol, uint32_t ring_idx);
+// 0-based atom indices forming the ring.
+rust::Vec<uint32_t> ring_atom_indices(const Molecule &mol, uint32_t ring_idx);
+bool ring_is_aromatic(const Molecule &mol, uint32_t ring_idx);
+
 }  // namespace ob_shim

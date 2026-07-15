@@ -94,3 +94,37 @@ impl std::fmt::Debug for Bond<'_> {
             .finish()
     }
 }
+
+/// A mutable handle to a bond, for editing it.
+///
+/// Obtained from [`Molecule::bond_mut`](crate::Molecule::bond_mut); it borrows
+/// the molecule mutably, so only one exists at a time.
+pub struct BondMut<'m> {
+    mol: &'m mut crate::Molecule,
+    /// OpenBabel's 0-based bond index.
+    ob_idx: u32,
+}
+
+impl<'m> BondMut<'m> {
+    pub(crate) fn new(mol: &'m mut crate::Molecule, ob_idx: u32) -> Self {
+        BondMut { mol, ob_idx }
+    }
+
+    /// 0-based index of this bond within the molecule.
+    pub fn index(&self) -> u32 {
+        self.ob_idx
+    }
+
+    /// Set the bond order (1 = single, 2 = double, 3 = triple; 5 = aromatic in
+    /// OpenBabel's convention).
+    pub fn set_order(&mut self, order: u32) -> &mut Self {
+        crate::with_ob(|| ffi::bond_set_order(self.mol.as_inner_pin_mut(), self.ob_idx, order));
+        self
+    }
+
+    /// Move the end atom so the bond has geometric length `length` (Å), keeping
+    /// the begin atom fixed. Returns `false` if the bond is invalid.
+    pub fn set_length(&mut self, length: f64) -> bool {
+        crate::with_ob(|| ffi::bond_set_length(self.mol.as_inner_pin_mut(), self.ob_idx, length))
+    }
+}
