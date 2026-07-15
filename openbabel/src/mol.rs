@@ -522,6 +522,27 @@ impl Molecule {
         }
     }
 
+    /// Topological symmetry class of every atom, in atom order (parallel to
+    /// [`atoms`](Self::atoms); entry `i` is atom `i`).
+    ///
+    /// Atoms that share a value are topologically equivalent (related by a graph
+    /// automorphism) — e.g. the two methyl carbons of propane, or all six
+    /// carbons of benzene. Computed with OpenBabel's `OBGraphSym`.
+    pub fn symmetry_classes(&self) -> Vec<u32> {
+        with_ob(|| ffi::mol_symmetry_classes(self.as_inner()))
+    }
+
+    /// A canonical rank (1-based) for every atom, in atom order (parallel to
+    /// [`atoms`](Self::atoms); entry `i` is atom `i`).
+    ///
+    /// The ranks are a repeatable canonical labelling of the graph — the same
+    /// molecule yields the same ranks regardless of input atom order — built
+    /// from the [`symmetry_classes`](Self::symmetry_classes) via OpenBabel's
+    /// canonical-labelling algorithm. Every atom gets a distinct rank.
+    pub fn canonical_ranks(&self) -> Vec<u32> {
+        with_ob(|| ffi::mol_canonical_ranks(self.as_inner()))
+    }
+
     /// Whether this molecule carries crystallographic unit-cell information
     /// (present after reading a crystal format such as CIF).
     pub fn has_unit_cell(&self) -> bool {

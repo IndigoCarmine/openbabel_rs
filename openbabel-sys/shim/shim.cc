@@ -2,6 +2,7 @@
 
 #include <openbabel/atom.h>
 #include <openbabel/bond.h>
+#include <openbabel/canon.h>
 #include <openbabel/chargemodel.h>
 #include <openbabel/descriptor.h>
 #include <openbabel/fingerprint.h>
@@ -9,6 +10,7 @@
 #include <openbabel/elements.h>
 #include <openbabel/forcefield.h>
 #include <openbabel/generic.h>
+#include <openbabel/graphsym.h>
 #include <openbabel/math/align.h>
 #include <openbabel/math/vector3.h>
 #include <openbabel/obconversion.h>
@@ -1415,6 +1417,35 @@ rust::Vec<double> mol_cell_to_cartesian(const Molecule &mol, double x, double y,
   out.push_back(v.x());
   out.push_back(v.y());
   out.push_back(v.z());
+  return out;
+}
+
+// --- Symmetry & canonical ordering ----------------------------------------
+
+// Topological symmetry class per atom, indexed in atom order (0-based); atoms
+// sharing a value are graph-equivalent. Vector length == number of atoms.
+rust::Vec<uint32_t> mol_symmetry_classes(const Molecule &mol) {
+  rust::Vec<uint32_t> out;
+  OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+  OpenBabel::OBGraphSym gs(&m);
+  std::vector<unsigned int> sym;
+  gs.GetSymmetry(sym);
+  for (unsigned int v : sym) out.push_back(static_cast<uint32_t>(v));
+  return out;
+}
+
+// Canonical rank (1-based) per atom, indexed in atom order (0-based) — a
+// repeatable canonical labelling built from the symmetry classes.
+rust::Vec<uint32_t> mol_canonical_ranks(const Molecule &mol) {
+  rust::Vec<uint32_t> out;
+  OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+  OpenBabel::OBGraphSym gs(&m);
+  std::vector<unsigned int> sym;
+  gs.GetSymmetry(sym);
+  std::vector<unsigned int> canon;
+  // Empty mask == all atoms (see canon.cpp); default maxSeconds, not onlyOne.
+  OpenBabel::CanonicalLabels(&m, sym, canon);
+  for (unsigned int v : canon) out.push_back(static_cast<uint32_t>(v));
   return out;
 }
 

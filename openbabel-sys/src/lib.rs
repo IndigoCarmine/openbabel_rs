@@ -393,6 +393,10 @@ pub mod ffi {
         fn mol_cell_lattice_type(mol: &Molecule) -> u32;
         fn mol_cell_to_fractional(mol: &Molecule, x: f64, y: f64, z: f64) -> Vec<f64>;
         fn mol_cell_to_cartesian(mol: &Molecule, x: f64, y: f64, z: f64) -> Vec<f64>;
+
+        // Symmetry & canonical ordering (one value per atom, atom order).
+        fn mol_symmetry_classes(mol: &Molecule) -> Vec<u32>;
+        fn mol_canonical_ranks(mol: &Molecule) -> Vec<u32>;
     }
 }
 

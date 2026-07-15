@@ -435,4 +435,10 @@ uint32_t mol_cell_lattice_type(const Molecule &mol);
 rust::Vec<double> mol_cell_to_fractional(const Molecule &mol, double x, double y, double z);
 rust::Vec<double> mol_cell_to_cartesian(const Molecule &mol, double x, double y, double z);
 
+// --- Symmetry & canonical ordering (one value per atom, atom order) --------
+// Topological symmetry classes; atoms sharing a value are graph-equivalent.
+rust::Vec<uint32_t> mol_symmetry_classes(const Molecule &mol);
+// Canonical rank (1-based) per atom — a repeatable canonical labelling.
+rust::Vec<uint32_t> mol_canonical_ranks(const Molecule &mol);
+
 }  // namespace ob_shim

@@ -187,6 +187,13 @@ Graph navigation & crystallography:
   `angles`, `volume`, `space_group`, `lattice_type` (a `LatticeType`), and
   `to_fractional` / `to_cartesian` coordinate conversions.
 
+Symmetry & canonical ordering:
+
+- `Molecule::symmetry_classes` returns a topological symmetry class per atom
+  (atoms sharing a value are graph-equivalent), and `canonical_ranks` a
+  repeatable, input-order-independent canonical labelling — both via OpenBabel's
+  `OBGraphSym` / canonical-labelling algorithm.
+
 ## Thread safety
 
 OpenBabel is not thread-safe — it keeps global mutable state (shared plugin

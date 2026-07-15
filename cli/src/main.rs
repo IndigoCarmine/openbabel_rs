@@ -75,6 +75,17 @@ fn main() {
         );
     }
 
+    // Topological symmetry (T13): how many symmetry-distinct atom environments.
+    {
+        use std::collections::HashSet;
+        let classes = mol.symmetry_classes();
+        let distinct = classes.iter().collect::<HashSet<_>>().len();
+        println!(
+            "Symmetry classes:  {distinct} distinct among {} atoms",
+            classes.len(),
+        );
+    }
+
     // 2D depiction (T6): render the skeletal structure to SVG (before adding
     // explicit H, for a cleaner drawing). A second CLI argument saves it.
     if let Some(svg) = mol.to_svg() {
