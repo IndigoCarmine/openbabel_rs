@@ -236,6 +236,44 @@ pub mod ffi {
         /// Set/get a string property (OBPairData) by key.
         fn mol_set_property(mol: Pin<&mut Molecule>, key: &str, value: &str);
         fn mol_get_property(mol: &Molecule, key: &str, ok: &mut bool) -> String;
+
+        // Residues (biopolymer/PDB substructure; `res_idx` is 0-based).
+        /// Number of perceived/loaded residues.
+        fn mol_num_residues(mol: &Molecule) -> u32;
+        /// Residue name (e.g. "GLY", "HOH"); empty if `res_idx` out of range.
+        fn residue_name(mol: &Molecule, res_idx: u32) -> String;
+        /// Residue sequence number (PDB `resSeq`).
+        fn residue_number(mol: &Molecule, res_idx: u32) -> i32;
+        /// Residue sequence number as text (may include insertion code).
+        fn residue_number_string(mol: &Molecule, res_idx: u32) -> String;
+        /// Chain identifier as a string ("A", "B", …); empty if unset.
+        fn residue_chain(mol: &Molecule, res_idx: u32) -> String;
+        /// Insertion code as a string; empty if unset.
+        fn residue_insertion_code(mol: &Molecule, res_idx: u32) -> String;
+        /// Atom counts for the residue.
+        fn residue_num_atoms(mol: &Molecule, res_idx: u32) -> u32;
+        fn residue_num_heavy_atoms(mol: &Molecule, res_idx: u32) -> u32;
+        /// 0-based atom indices belonging to the residue.
+        fn residue_atom_indices(mol: &Molecule, res_idx: u32) -> Vec<u32>;
+        /// 0-based residue index for atom `idx` (1-based); -1 if none.
+        fn atom_residue_index(mol: &Molecule, idx: u32) -> i32;
+        /// PDB atom name for atom `idx` within its residue (e.g. " CA "); empty
+        /// if the atom has no residue.
+        fn atom_residue_atom_id(mol: &Molecule, idx: u32) -> String;
+        /// Whether atom `idx` is a HETATM in its residue.
+        fn atom_is_hetatm(mol: &Molecule, idx: u32) -> bool;
+        /// PDB serial number of atom `idx` within its residue; 0 if none.
+        fn atom_serial_number(mol: &Molecule, idx: u32) -> u32;
+
+        // Spectra.
+        /// Spectrophore descriptor (default 48 values; needs 3D coordinates).
+        /// Empty on failure.
+        fn mol_spectrophore(mol: &Molecule) -> Vec<f64>;
+        /// Vibrational frequencies (cm⁻¹); empty unless the molecule carries
+        /// `OBVibrationData` (e.g. read from a comp-chem output).
+        fn mol_vibration_frequencies(mol: &Molecule) -> Vec<f64>;
+        /// Vibrational IR intensities (km/mol); empty unless present.
+        fn mol_vibration_intensities(mol: &Molecule) -> Vec<f64>;
     }
 }
 

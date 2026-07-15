@@ -103,6 +103,12 @@ fn main() {
 
         // Conformer search (T7): count diverse low-energy conformers.
         println!("Conformers:        {}", mol.generate_conformers(10));
+
+        // Spectrophore descriptor (T9): a 48-value 3D shape/property fingerprint.
+        let sp = mol.spectrophore();
+        if !sp.is_empty() {
+            println!("Spectrophore:      {} values (first {:+.2})", sp.len(), sp[0]);
+        }
     }
 
     // Assign partial atomic charges so the per-atom listing can show them (T4).

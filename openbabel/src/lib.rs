@@ -18,6 +18,7 @@ pub mod elements;
 mod error;
 mod fingerprint;
 mod mol;
+mod residue;
 mod smarts;
 mod transform;
 
@@ -26,6 +27,7 @@ pub use bond::Bond;
 pub use error::Error;
 pub use fingerprint::Fingerprint;
 pub use mol::{Molecule, SvgOptions};
+pub use residue::Residue;
 pub use smarts::SmartsPattern;
 pub use transform::Transform;
 

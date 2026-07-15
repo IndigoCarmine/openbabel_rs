@@ -8,7 +8,7 @@ cheminformatics toolkit, built with [`cxx`](https://cxx.rs) over a thin C++ shim
 | Crate           | Role                                                                 |
 | --------------- | ------------------------------------------------------------------- |
 | `openbabel-sys` | Low-level FFI: a `cxx` bridge + C++ shim; `build.rs` builds OpenBabel from source and links it. |
-| `openbabel`     | Safe, idiomatic API: `Molecule`, `Atom`, `Bond`, `SmartsPattern`, `Fingerprint`, `Transform`, the `elements` module, `Error`. |
+| `openbabel`     | Safe, idiomatic API: `Molecule`, `Atom`, `Bond`, `Residue`, `SmartsPattern`, `Fingerprint`, `Transform`, the `elements` module, `Error`. |
 | `cli`           | `openbabel-demo` — a small SMILES-inspection demo.                   |
 
 Dependencies are vendored as git submodules: OpenBabel at `vendor/openbabel-src`
@@ -107,6 +107,25 @@ Element data & extended queries:
   `spaced_formula`, `spin_multiplicity`, `center`, `angle` / `torsion`
   measurements, `clone`, `strip_salts`, `separate` (into fragments), and
   string `property` / `set_property` metadata.
+
+Residues (biopolymer / PDB substructure):
+
+- `Molecule::num_residues` / `residue` / `residues` expose the residue grouping
+  that formats like PDB and mmCIF carry: a [`Residue`] reports its `name`,
+  `number` / `number_string`, `chain`, `insertion_code`, atom counts, and its
+  member `atoms`. From the other side, `Atom::residue` links an atom back to its
+  residue, with `residue_atom_id`, `is_hetatm`, and `serial_number` for the
+  per-atom PDB fields. Molecules parsed from SMILES carry no residues (so
+  `num_residues` is `0` and `Atom::residue` is `None`); the API never
+  synthesizes one.
+
+Spectra:
+
+- `Molecule::spectrophore` computes the Spectrophore™ descriptor (48 values by
+  default) from a 3D structure — a rotation-invariant shape/property fingerprint
+  for similarity work. `Molecule::vibration_frequencies` /
+  `vibration_intensities` read vibrational data when the molecule was parsed from
+  a computational-chemistry output that carries it.
 
 ## Thread safety
 

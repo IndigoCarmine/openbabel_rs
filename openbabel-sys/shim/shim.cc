@@ -14,7 +14,9 @@
 #include <openbabel/obconversion.h>
 #include <openbabel/op.h>
 #include <openbabel/plugin.h>
+#include <openbabel/residue.h>
 #include <openbabel/ring.h>
+#include <openbabel/spectrophore.h>
 #include <openbabel/stereo/cistrans.h>
 #include <openbabel/stereo/stereo.h>
 #include <openbabel/stereo/tetrahedral.h>
@@ -830,6 +832,135 @@ rust::String mol_get_property(const Molecule &mol, rust::Str key, bool &ok) {
     ok = false;
     return rust::String();
   }
+}
+
+// --- Residues ------------------------------------------------------------
+
+namespace {
+// Fetch residue `ridx` (0-based). Returns nullptr if out of range.
+OpenBabel::OBResidue *residue_at(const Molecule &mol, uint32_t ridx) {
+  OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+  if (ridx >= m.NumResidues()) return nullptr;
+  return m.GetResidue(static_cast<int>(ridx));
+}
+// Convert a single char to a rust::String, treating '\0' and ' ' as empty.
+rust::String char_to_string(char c) {
+  if (c == '\0' || c == ' ') return rust::String();
+  return rust::String(std::string(1, c));
+}
+}  // namespace
+
+uint32_t mol_num_residues(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.NumResidues();
+}
+rust::String residue_name(const Molecule &mol, uint32_t ridx) {
+  auto *r = residue_at(mol, ridx);
+  return r ? rust::String(r->GetName()) : rust::String();
+}
+int residue_number(const Molecule &mol, uint32_t ridx) {
+  auto *r = residue_at(mol, ridx);
+  return r ? r->GetNum() : 0;
+}
+rust::String residue_number_string(const Molecule &mol, uint32_t ridx) {
+  auto *r = residue_at(mol, ridx);
+  return r ? rust::String(r->GetNumString()) : rust::String();
+}
+rust::String residue_chain(const Molecule &mol, uint32_t ridx) {
+  auto *r = residue_at(mol, ridx);
+  return r ? char_to_string(r->GetChain()) : rust::String();
+}
+rust::String residue_insertion_code(const Molecule &mol, uint32_t ridx) {
+  auto *r = residue_at(mol, ridx);
+  return r ? char_to_string(r->GetInsertionCode()) : rust::String();
+}
+uint32_t residue_num_atoms(const Molecule &mol, uint32_t ridx) {
+  auto *r = residue_at(mol, ridx);
+  return r ? r->GetNumAtoms() : 0;
+}
+uint32_t residue_num_heavy_atoms(const Molecule &mol, uint32_t ridx) {
+  auto *r = residue_at(mol, ridx);
+  return r ? r->GetNumHvyAtoms() : 0;
+}
+rust::Vec<uint32_t> residue_atom_indices(const Molecule &mol, uint32_t ridx) {
+  rust::Vec<uint32_t> out;
+  auto *r = residue_at(mol, ridx);
+  if (!r) return out;
+  for (OpenBabel::OBAtom *a : r->GetAtoms())
+    if (a) out.push_back(static_cast<uint32_t>(a->GetIdx()) - 1);  // 0-based
+  return out;
+}
+// The atom_residue_* helpers deliberately use HasResidue() (a plain null check)
+// rather than GetResidue() alone: OBAtom::GetResidue() force-perceives chains
+// when none exist, which would synthesize a fake residue for a molecule parsed
+// from SMILES. Guarding on HasResidue() reports residue data only when the
+// input format actually carried it (PDB, mmCIF, …), keeping the result
+// consistent with mol_num_residues().
+int atom_residue_index(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (!a || !a->HasResidue()) return -1;
+  OpenBabel::OBResidue *r = a->GetResidue();
+  return r ? static_cast<int>(r->GetIdx()) : -1;
+}
+rust::String atom_residue_atom_id(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (!a || !a->HasResidue()) return rust::String();
+  OpenBabel::OBResidue *r = a->GetResidue();
+  return r ? rust::String(r->GetAtomID(a)) : rust::String();
+}
+bool atom_is_hetatm(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (!a || !a->HasResidue()) return false;
+  OpenBabel::OBResidue *r = a->GetResidue();
+  return r ? r->IsHetAtom(a) : false;
+}
+uint32_t atom_serial_number(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (!a || !a->HasResidue()) return 0;
+  OpenBabel::OBResidue *r = a->GetResidue();
+  return r ? r->GetSerialNum(a) : 0;
+}
+
+// --- Spectra -------------------------------------------------------------
+
+rust::Vec<double> mol_spectrophore(const Molecule &mol) {
+  rust::Vec<double> out;
+  try {
+    OpenBabel::OBSpectrophore engine;
+    std::vector<double> v =
+        engine.GetSpectrophore(&const_cast<Molecule &>(mol).mol);
+    for (double x : v) out.push_back(x);
+  } catch (...) {
+  }
+  return out;
+}
+
+namespace {
+const OpenBabel::OBVibrationData *vibration_data(const Molecule &mol) {
+  OpenBabel::OBGenericData *d =
+      const_cast<Molecule &>(mol).mol.GetData(OpenBabel::OBGenericDataType::VibrationData);
+  return dynamic_cast<OpenBabel::OBVibrationData *>(d);
+}
+}  // namespace
+
+rust::Vec<double> mol_vibration_frequencies(const Molecule &mol) {
+  rust::Vec<double> out;
+  try {
+    const auto *vd = vibration_data(mol);
+    if (vd)
+      for (double f : vd->GetFrequencies()) out.push_back(f);
+  } catch (...) {
+  }
+  return out;
+}
+rust::Vec<double> mol_vibration_intensities(const Molecule &mol) {
+  rust::Vec<double> out;
+  try {
+    const auto *vd = vibration_data(mol);
+    if (vd)
+      for (double x : vd->GetIntensities()) out.push_back(x);
+  } catch (...) {
+  }
+  return out;
 }
 
 }  // namespace ob_shim

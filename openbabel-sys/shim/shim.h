@@ -259,4 +259,32 @@ std::unique_ptr<std::vector<Molecule>> mol_separate(const Molecule &mol);
 void mol_set_property(Molecule &mol, rust::Str key, rust::Str value);
 rust::String mol_get_property(const Molecule &mol, rust::Str key, bool &ok);
 
+// --- Residues (OBResidue; res_idx is 0-based) -----------------------------
+uint32_t mol_num_residues(const Molecule &mol);
+rust::String residue_name(const Molecule &mol, uint32_t res_idx);
+int residue_number(const Molecule &mol, uint32_t res_idx);
+rust::String residue_number_string(const Molecule &mol, uint32_t res_idx);
+rust::String residue_chain(const Molecule &mol, uint32_t res_idx);  // 1 char, "" if none
+rust::String residue_insertion_code(const Molecule &mol, uint32_t res_idx);
+uint32_t residue_num_atoms(const Molecule &mol, uint32_t res_idx);
+uint32_t residue_num_heavy_atoms(const Molecule &mol, uint32_t res_idx);
+// 0-based indices of the atoms that belong to this residue.
+rust::Vec<uint32_t> residue_atom_indices(const Molecule &mol, uint32_t res_idx);
+// Per-atom residue info (atom idx is 1-based). residue index is -1 if the atom
+// has no residue.
+int atom_residue_index(const Molecule &mol, uint32_t idx);
+rust::String atom_residue_atom_id(const Molecule &mol, uint32_t idx);  // e.g. "CA"
+bool atom_is_hetatm(const Molecule &mol, uint32_t idx);
+uint32_t atom_serial_number(const Molecule &mol, uint32_t idx);
+
+// --- Spectra --------------------------------------------------------------
+// Spectrophore descriptor (48 values by default). Needs 3D coordinates;
+// returns an empty vector otherwise.
+rust::Vec<double> mol_spectrophore(const Molecule &mol);
+// Vibrational frequencies / IR intensities, if the molecule carries
+// OBVibrationData (e.g. read from a computational-chemistry output). Empty
+// otherwise.
+rust::Vec<double> mol_vibration_frequencies(const Molecule &mol);
+rust::Vec<double> mol_vibration_intensities(const Molecule &mol);
+
 }  // namespace ob_shim

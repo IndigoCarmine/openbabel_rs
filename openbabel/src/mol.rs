@@ -6,6 +6,7 @@ use openbabel_sys::ffi;
 use crate::atom::Atom;
 use crate::bond::Bond;
 use crate::error::Error;
+use crate::residue::Residue;
 use crate::with_ob;
 
 /// Rendering options for [`Molecule::to_svg_with`].
@@ -448,6 +449,53 @@ impl Molecule {
     pub fn bonds(&self) -> impl Iterator<Item = Bond<'_>> + '_ {
         let mol = self.as_inner();
         (0..self.num_bonds()).map(move |i| Bond { mol, ob_idx: i })
+    }
+
+    /// Number of residues. `0` for molecules without biopolymer/PDB structure
+    /// (e.g. anything parsed from SMILES).
+    pub fn num_residues(&self) -> u32 {
+        with_ob(|| ffi::mol_num_residues(self.as_inner()))
+    }
+
+    /// The residue at 0-based `index`, or `None` if out of range.
+    pub fn residue(&self, index: u32) -> Option<Residue<'_>> {
+        if index < self.num_residues() {
+            Some(Residue::new(self.as_inner(), index))
+        } else {
+            None
+        }
+    }
+
+    /// Iterate over the residues in index order.
+    pub fn residues(&self) -> impl Iterator<Item = Residue<'_>> + '_ {
+        let mol = self.as_inner();
+        (0..self.num_residues()).map(move |i| Residue::new(mol, i))
+    }
+
+    /// Compute the Spectrophore™ descriptor.
+    ///
+    /// Returns the descriptor vector (48 values with the default settings). The
+    /// molecule needs a 3D conformer — call [`generate_3d`](Self::generate_3d)
+    /// first for structures without coordinates. Returns an empty vector on
+    /// failure.
+    pub fn spectrophore(&self) -> Vec<f64> {
+        with_ob(|| ffi::mol_spectrophore(self.as_inner()))
+    }
+
+    /// Vibrational frequencies (cm⁻¹).
+    ///
+    /// Only populated when the molecule was read from a computational-chemistry
+    /// output that carries vibration data (e.g. a Gaussian/ORCA log); otherwise
+    /// empty.
+    pub fn vibration_frequencies(&self) -> Vec<f64> {
+        with_ob(|| ffi::mol_vibration_frequencies(self.as_inner()))
+    }
+
+    /// Vibrational IR intensities (km/mol), paired index-wise with
+    /// [`vibration_frequencies`](Self::vibration_frequencies). Empty unless the
+    /// molecule carries vibration data.
+    pub fn vibration_intensities(&self) -> Vec<f64> {
+        with_ob(|| ffi::mol_vibration_intensities(self.as_inner()))
     }
 
     pub(crate) fn as_inner(&self) -> &ffi::Molecule {

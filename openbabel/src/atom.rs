@@ -184,6 +184,34 @@ impl<'mol> Atom<'mol> {
     pub fn is_in_ring_size(&self, size: u32) -> bool {
         crate::with_ob(|| ffi::atom_is_in_ring_size(self.mol, self.ob_idx, size))
     }
+
+    /// The [`Residue`](crate::Residue) this atom belongs to, or `None` if the
+    /// molecule carries no residue information (typical for small molecules
+    /// parsed from SMILES).
+    pub fn residue(&self) -> Option<crate::Residue<'mol>> {
+        let idx = crate::with_ob(|| ffi::atom_residue_index(self.mol, self.ob_idx));
+        if idx < 0 {
+            None
+        } else {
+            Some(crate::residue::Residue::new(self.mol, idx as u32))
+        }
+    }
+
+    /// This atom's PDB atom name within its residue (e.g. `" CA "`), or an
+    /// empty string if it has no residue.
+    pub fn residue_atom_id(&self) -> String {
+        crate::with_ob(|| ffi::atom_residue_atom_id(self.mol, self.ob_idx))
+    }
+
+    /// Whether this atom is a `HETATM` (heteroatom record) in its residue.
+    pub fn is_hetatm(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_hetatm(self.mol, self.ob_idx))
+    }
+
+    /// This atom's PDB serial number within its residue, or `0` if it has none.
+    pub fn serial_number(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_serial_number(self.mol, self.ob_idx))
+    }
 }
 
 impl std::fmt::Debug for Atom<'_> {
