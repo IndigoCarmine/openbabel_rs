@@ -16,6 +16,7 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -43,6 +44,13 @@ fn main() {
          Run: git submodule update --init --recursive",
         eigen_dir.display()
     );
+
+    // Fail early with an actionable message if cmake is missing. The `cmake`
+    // crate shells out to the `cmake` binary and, when it is absent, panics
+    // deep inside the crate with a generic "is `cmake` not installed?" — which
+    // buries the one thing the user needs: the command to install it. Cargo has
+    // no way to install system build tools itself, so we can only guide.
+    ensure_cmake_present();
 
     // Make the bundled InChI library linkable on MSVC (see fn docs).
     ensure_inchi_auxinfo_stubs(&ob_src);
@@ -270,6 +278,50 @@ fn versioned_subdir(parent: &Path) -> Option<PathBuf> {
         .map(|e| e.path())
         .filter(|p| p.is_dir())
         .max()
+}
+
+/// Verify the `cmake` binary is on `PATH`, aborting with an OS-specific install
+/// hint if not.
+///
+/// Building OpenBabel from source requires cmake, but Cargo cannot install
+/// system build tools. Without this check the build panics deep inside the
+/// `cmake` crate with a message that omits *how* to get cmake; here we surface
+/// the exact command for the host platform instead. Honors the `CMAKE`
+/// environment variable, which the `cmake` crate itself consults to locate a
+/// non-`PATH` binary.
+fn ensure_cmake_present() {
+    let cmake = env::var_os("CMAKE").unwrap_or_else(|| "cmake".into());
+    let found = Command::new(&cmake)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if found {
+        return;
+    }
+
+    let hint = match env::var("CARGO_CFG_TARGET_OS").as_deref() {
+        Ok("macos") => "Install it with:  brew install cmake",
+        Ok("windows") => {
+            "Install it with:  winget install Kitware.CMake\n\
+             (or download from https://cmake.org/download/ and add it to PATH)"
+        }
+        Ok("linux") => {
+            "Install it with your package manager, e.g.:\n\
+             \x20 Debian/Ubuntu:  sudo apt-get install cmake\n\
+             \x20 Fedora:         sudo dnf install cmake\n\
+             \x20 Arch:           sudo pacman -S cmake"
+        }
+        _ => "Install cmake from https://cmake.org/download/ and ensure it is on PATH",
+    };
+
+    panic!(
+        "\n\
+         `cmake` was not found on PATH, but it is required to build OpenBabel \
+         from source.\n\
+         {hint}\n\
+         (Or set the CMAKE environment variable to the full path of a cmake binary.)\n"
+    );
 }
 
 /// Write inert implementations of four InChI AuxInfo entry points into the
