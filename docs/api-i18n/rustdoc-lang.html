@@ -1,0 +1,38 @@
+<!-- Injected into every rustdoc page (via RUSTDOCFLAGS=--html-in-header) to add a
+     floating language switch between the English (/api/) and Japanese (/ja/api/)
+     API reference. No-op locally, where the path has no /api/ segment. -->
+<style>
+  #ob-lang-switch {
+    position: fixed;
+    top: 0.6rem;
+    right: 1rem;
+    z-index: 1000;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 4px 9px;
+    border-radius: 6px;
+    text-decoration: none;
+    background: var(--main-background-color, #fff);
+    color: var(--link-color, #3873ad);
+    border: 1px solid var(--border-color, #ccc);
+  }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var p = location.pathname, href, label;
+    if (p.indexOf("/ja/api/") !== -1) {
+      href = p.replace("/ja/api/", "/api/");
+      label = "English";
+    } else if (p.indexOf("/api/") !== -1) {
+      href = p.replace("/api/", "/ja/api/");
+      label = "日本語";
+    } else {
+      return; // local preview without the deployed /api/ prefix
+    }
+    var a = document.createElement("a");
+    a.id = "ob-lang-switch";
+    a.href = href + location.hash;
+    a.textContent = "🌐 " + label;
+    document.body.appendChild(a);
+  });
+</script>
