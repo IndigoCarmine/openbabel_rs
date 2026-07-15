@@ -15,6 +15,11 @@ pub enum Error {
         /// The unrecognized format id.
         format: String,
     },
+    /// A SMARTS pattern failed to compile.
+    InvalidSmarts {
+        /// The offending pattern.
+        pattern: String,
+    },
 }
 
 impl fmt::Display for Error {
@@ -25,6 +30,9 @@ impl fmt::Display for Error {
             }
             Error::UnknownFormat { format } => {
                 write!(f, "unknown OpenBabel format {format:?}")
+            }
+            Error::InvalidSmarts { pattern } => {
+                write!(f, "invalid SMARTS pattern {pattern:?}")
             }
         }
     }

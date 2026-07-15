@@ -14,7 +14,9 @@ cheminformatics toolkit, built with [`cxx`](https://cxx.rs) over a thin C++ shim
 OpenBabel itself is vendored as a git submodule at `vendor/openbabel-src`
 (pinned to tag `openbabel-3-2-1`).
 
-## Current scope (MVP)
+## Current scope
+
+Core (`Molecule`, `Atom`, `Bond`):
 
 - Read/write molecules in any OpenBabel format (`Molecule::parse` / `write`) —
   SMILES, MOL, SDF, PDB, canonical SMILES, …
@@ -23,6 +25,23 @@ OpenBabel itself is vendored as a git submodule at `vendor/openbabel-src`
 - Atom access: element, coordinates, formal charge, aromaticity, ring membership.
 - Bond access: begin/end atoms, order, aromaticity, ring membership.
 - `add_hydrogens` / `remove_hydrogens`.
+
+Analysis:
+
+- SMARTS substructure matching (`SmartsPattern`): `matches`, `num_matches`,
+  `match_indices`.
+- Fingerprints & Tanimoto similarity (`Fingerprint`): `FP2`, `FP3`, `FP4`,
+  `MACCS`, …
+- Numeric descriptors (`Molecule::descriptor`, plus `logp` / `tpsa` /
+  `molar_refractivity`).
+
+## Thread safety
+
+OpenBabel is not thread-safe — it keeps global mutable state (shared plugin
+singletons, aromaticity/ring perception caches). This crate therefore
+serializes every call into OpenBabel behind a global lock, so the safe API
+cannot be used to trigger data races. Calls from multiple threads are correct
+but do not run concurrently; for throughput, use multiple processes.
 
 ## Building
 

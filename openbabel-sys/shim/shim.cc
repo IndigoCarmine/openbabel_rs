@@ -2,11 +2,15 @@
 
 #include <openbabel/atom.h>
 #include <openbabel/bond.h>
+#include <openbabel/descriptor.h>
+#include <openbabel/fingerprint.h>
 #include <openbabel/obconversion.h>
+#include <openbabel/plugin.h>
 
 #include <cstdlib>
 #include <sstream>
 #include <string>
+#include <vector>
 
 // `struct Molecule` is defined completely in shim.h (cxx needs it there).
 
@@ -180,6 +184,97 @@ bool bond_is_aromatic(const Molecule &mol, uint32_t idx) {
 bool bond_is_in_ring(const Molecule &mol, uint32_t idx) {
   auto *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
   return b ? b->IsInRing() : false;
+}
+
+// --- SMARTS --------------------------------------------------------------
+
+std::unique_ptr<Smarts> smarts_new(rust::Str pattern) {
+  try {
+    auto s = std::unique_ptr<Smarts>(new Smarts());
+    if (!s->pat.Init(to_std(pattern))) return nullptr;
+    return s;
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+uint32_t smarts_atom_count(const Smarts &smarts) {
+  return smarts.pat.NumAtoms();
+}
+
+bool smarts_matches(const Smarts &smarts, const Molecule &mol) {
+  try {
+    std::vector<std::vector<int>> mlist;
+    OpenBabel::OBMol &m = const_cast<OpenBabel::OBMol &>(mol.mol);
+    smarts.pat.Match(m, mlist, OpenBabel::OBSmartsPattern::Single);
+    return !mlist.empty();
+  } catch (...) {
+    return false;
+  }
+}
+
+rust::Vec<uint32_t> smarts_match_atoms(const Smarts &smarts,
+                                       const Molecule &mol) {
+  rust::Vec<uint32_t> out;
+  try {
+    std::vector<std::vector<int>> mlist;
+    OpenBabel::OBMol &m = const_cast<OpenBabel::OBMol &>(mol.mol);
+    smarts.pat.Match(m, mlist, OpenBabel::OBSmartsPattern::AllUnique);
+    for (const auto &match : mlist)
+      for (int idx : match) out.push_back(static_cast<uint32_t>(idx));
+  } catch (...) {
+  }
+  return out;
+}
+
+// --- Fingerprints --------------------------------------------------------
+
+rust::Vec<uint32_t> fingerprint(const Molecule &mol, rust::Str id) {
+  rust::Vec<uint32_t> out;
+  try {
+    // Use OBPlugin::GetPlugin (exported from the OpenBabel DLL) rather than
+    // OBFingerprint::FindFingerprint (an inline header function): the inline
+    // path consults a plugin map local to *this* translation unit, which is
+    // empty because the .obf plugins register into the DLL's own map.
+    OpenBabel::OBFingerprint *fp = dynamic_cast<OpenBabel::OBFingerprint *>(
+        OpenBabel::OBPlugin::GetPlugin("fingerprints", to_std(id).c_str()));
+    if (!fp) return out;
+    std::vector<unsigned int> v;
+    if (!fp->GetFingerprint(&const_cast<Molecule &>(mol).mol, v)) return out;
+    for (unsigned int x : v) out.push_back(static_cast<uint32_t>(x));
+  } catch (...) {
+  }
+  return out;
+}
+
+double tanimoto(rust::Slice<const uint32_t> a, rust::Slice<const uint32_t> b) {
+  try {
+    std::vector<unsigned int> va(a.begin(), a.end());
+    std::vector<unsigned int> vb(b.begin(), b.end());
+    return OpenBabel::OBFingerprint::Tanimoto(va, vb);
+  } catch (...) {
+    return 0.0;
+  }
+}
+
+// --- Descriptors ---------------------------------------------------------
+
+double descriptor(const Molecule &mol, rust::Str id, bool &ok) {
+  try {
+    // GetPlugin (DLL-exported) instead of OBDescriptor::FindType (inline);
+    // see the note in fingerprint() above.
+    OpenBabel::OBDescriptor *d = dynamic_cast<OpenBabel::OBDescriptor *>(
+        OpenBabel::OBPlugin::GetPlugin("descriptors", to_std(id).c_str()));
+    if (!d) {
+      ok = false;
+      return 0.0;
+    }
+    ok = true;
+    return d->Predict(&const_cast<Molecule &>(mol).mol);
+  } catch (...) {
+    ok = false;
+    return 0.0;
+  }
 }
 
 }  // namespace ob_shim

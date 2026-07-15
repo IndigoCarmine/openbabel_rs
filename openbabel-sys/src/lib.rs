@@ -20,6 +20,9 @@ pub mod ffi {
         /// Opaque owner of an OpenBabel `OBMol`.
         type Molecule;
 
+        /// Opaque owner of a compiled OpenBabel `OBSmartsPattern`.
+        type Smarts;
+
         /// OpenBabel release version, e.g. `"3.2.1"`.
         fn release_version() -> String;
 
@@ -65,6 +68,29 @@ pub mod ffi {
         fn bond_order(mol: &Molecule, idx: u32) -> u32;
         fn bond_is_aromatic(mol: &Molecule, idx: u32) -> bool;
         fn bond_is_in_ring(mol: &Molecule, idx: u32) -> bool;
+
+        // SMARTS substructure matching.
+        /// Compile a SMARTS pattern; null on invalid syntax.
+        fn smarts_new(pattern: &str) -> UniquePtr<Smarts>;
+        /// Number of atoms in the pattern (= length of each match).
+        fn smarts_atom_count(smarts: &Smarts) -> u32;
+        /// Whether the pattern matches `mol` at least once.
+        fn smarts_matches(smarts: &Smarts, mol: &Molecule) -> bool;
+        /// Unique matches flattened to 1-based atom indices; reshape with
+        /// `smarts_atom_count`.
+        fn smarts_match_atoms(smarts: &Smarts, mol: &Molecule) -> Vec<u32>;
+
+        // Fingerprints & similarity.
+        /// Fingerprint of `mol` via plugin `id` ("FP2"/"FP3"/"FP4"/"MACCS");
+        /// empty on unknown id.
+        fn fingerprint(mol: &Molecule, id: &str) -> Vec<u32>;
+        /// Tanimoto coefficient between two fingerprints.
+        fn tanimoto(a: &[u32], b: &[u32]) -> f64;
+
+        // Descriptors.
+        /// Numeric descriptor `id` ("logP"/"TPSA"/"MR"/"MW"/...) of `mol`;
+        /// sets `ok` to false for an unknown id.
+        fn descriptor(mol: &Molecule, id: &str, ok: &mut bool) -> f64;
     }
 }
 

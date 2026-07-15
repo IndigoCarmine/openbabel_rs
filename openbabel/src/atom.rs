@@ -21,32 +21,34 @@ impl<'mol> Atom<'mol> {
 
     /// Atomic number (e.g. 6 for carbon, 8 for oxygen).
     pub fn atomic_number(&self) -> u32 {
-        ffi::atom_atomic_num(self.mol, self.ob_idx)
+        crate::with_ob(|| ffi::atom_atomic_num(self.mol, self.ob_idx))
     }
 
     /// Cartesian coordinates `(x, y, z)`. Zero unless the molecule has a
     /// conformer / 3D structure.
     pub fn coords(&self) -> (f64, f64, f64) {
-        (
-            ffi::atom_x(self.mol, self.ob_idx),
-            ffi::atom_y(self.mol, self.ob_idx),
-            ffi::atom_z(self.mol, self.ob_idx),
-        )
+        crate::with_ob(|| {
+            (
+                ffi::atom_x(self.mol, self.ob_idx),
+                ffi::atom_y(self.mol, self.ob_idx),
+                ffi::atom_z(self.mol, self.ob_idx),
+            )
+        })
     }
 
     /// Formal charge on this atom.
     pub fn formal_charge(&self) -> i32 {
-        ffi::atom_formal_charge(self.mol, self.ob_idx)
+        crate::with_ob(|| ffi::atom_formal_charge(self.mol, self.ob_idx))
     }
 
     /// Whether this atom is part of an aromatic system.
     pub fn is_aromatic(&self) -> bool {
-        ffi::atom_is_aromatic(self.mol, self.ob_idx)
+        crate::with_ob(|| ffi::atom_is_aromatic(self.mol, self.ob_idx))
     }
 
     /// Whether this atom is a member of any ring.
     pub fn is_in_ring(&self) -> bool {
-        ffi::atom_is_in_ring(self.mol, self.ob_idx)
+        crate::with_ob(|| ffi::atom_is_in_ring(self.mol, self.ob_idx))
     }
 }
 

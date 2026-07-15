@@ -15,16 +15,39 @@
 mod atom;
 mod bond;
 mod error;
+mod fingerprint;
 mod mol;
+mod smarts;
 
 pub use atom::Atom;
 pub use bond::Bond;
 pub use error::Error;
+pub use fingerprint::Fingerprint;
 pub use mol::Molecule;
+pub use smarts::SmartsPattern;
 
-use std::sync::Once;
+use std::sync::{Mutex, Once};
 
 static INIT: Once = Once::new();
+
+/// Serializes all access to OpenBabel.
+///
+/// OpenBabel is not thread-safe: it keeps global mutable state (shared plugin
+/// singletons, aromaticity/ring perception caches, …), so concurrent calls
+/// corrupt memory. Because this crate exposes a *safe* API, it must make that
+/// impossible — every entry point runs under this lock via [`with_ob`].
+static OB_LOCK: Mutex<()> = Mutex::new(());
+
+/// Run `f` with OpenBabel initialized and the global lock held.
+///
+/// All FFI calls into OpenBabel go through here. The closure must not call
+/// another `with_ob` (the lock is not reentrant); keep the raw `ffi::…` calls
+/// inside it rather than calling back into public methods.
+pub(crate) fn with_ob<R>(f: impl FnOnce() -> R) -> R {
+    init();
+    let _guard = OB_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    f()
+}
 
 /// Point OpenBabel at the format plugins and data files installed alongside the
 /// linked library.
@@ -39,12 +62,14 @@ pub fn init() {
         // Set via the C runtime (not std::env::set_var): on Windows OpenBabel
         // reads these with getenv(), which does not observe variables set
         // through the Win32 environment block that std::env uses.
-        if std::env::var_os("BABEL_LIBDIR").is_none() {
-            openbabel_sys::ffi::set_env("BABEL_LIBDIR", openbabel_sys::paths::BABEL_LIBDIR);
-        }
-        if std::env::var_os("BABEL_DATADIR").is_none() {
-            openbabel_sys::ffi::set_env("BABEL_DATADIR", openbabel_sys::paths::BABEL_DATADIR);
-        }
+        //
+        // We *override* any pre-existing values: a stale system OpenBabel
+        // install (e.g. an older release) commonly leaves BABEL_DATADIR
+        // pointing at its own, version-mismatched data directory, which
+        // silently breaks data-driven plugins (descriptors, some fingerprints).
+        // Our bundled data must match our bundled library.
+        openbabel_sys::ffi::set_env("BABEL_LIBDIR", openbabel_sys::paths::BABEL_LIBDIR);
+        openbabel_sys::ffi::set_env("BABEL_DATADIR", openbabel_sys::paths::BABEL_DATADIR);
     });
 }
 

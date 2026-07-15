@@ -6,7 +6,7 @@
 //! Parses the given SMILES (default: ethanol "CCO"), then prints core
 //! properties and the canonical SMILES — exercising the MVP binding surface.
 
-use openbabel::Molecule;
+use openbabel::{Molecule, SmartsPattern};
 
 fn main() {
     let smiles = std::env::args().nth(1).unwrap_or_else(|| "CCO".to_string());
@@ -28,6 +28,19 @@ fn main() {
     println!("Total charge:      {}", mol.total_charge());
     println!("Heavy atoms:       {}", mol.num_atoms());
     println!("Bonds:             {}", mol.num_bonds());
+
+    // Descriptors (T2).
+    if let Some(v) = mol.logp() {
+        println!("logP:              {v:.3}");
+    }
+    if let Some(v) = mol.tpsa() {
+        println!("TPSA:              {v:.2}");
+    }
+
+    // A SMARTS query (T2): count hydroxyl groups.
+    if let Ok(oh) = SmartsPattern::new("[OX2H]") {
+        println!("Hydroxyl groups:   {}", oh.num_matches(&mol));
+    }
 
     mol.add_hydrogens();
     println!("Atoms (with H):    {}", mol.num_atoms());
