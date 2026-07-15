@@ -88,6 +88,11 @@ impl Molecule {
         with_ob(|| ffi::mol_formula(self.as_inner()))
     }
 
+    /// Molecular formula with element counts spaced out, e.g. `"C 2 H 6 O 1"`.
+    pub fn spaced_formula(&self) -> String {
+        with_ob(|| ffi::mol_spaced_formula(self.as_inner()))
+    }
+
     /// Standard molar mass in g/mol (counts implicit H).
     pub fn molar_mass(&self) -> f64 {
         with_ob(|| ffi::mol_mol_wt(self.as_inner()))
@@ -111,6 +116,26 @@ impl Molecule {
     /// Number of bonds.
     pub fn num_bonds(&self) -> u32 {
         with_ob(|| ffi::mol_num_bonds(self.as_inner()))
+    }
+
+    /// Number of heavy (non-hydrogen) atoms.
+    pub fn num_heavy_atoms(&self) -> u32 {
+        with_ob(|| ffi::mol_num_heavy_atoms(self.as_inner()))
+    }
+
+    /// Number of rings in the Smallest Set of Smallest Rings (SSSR).
+    pub fn num_rings(&self) -> u32 {
+        with_ob(|| ffi::mol_num_rings(self.as_inner()))
+    }
+
+    /// Number of rotatable bonds.
+    pub fn num_rotatable_bonds(&self) -> u32 {
+        with_ob(|| ffi::mol_num_rotors(self.as_inner()))
+    }
+
+    /// Total spin multiplicity of the molecule.
+    pub fn spin_multiplicity(&self) -> u32 {
+        with_ob(|| ffi::mol_spin_multiplicity(self.as_inner()))
     }
 
     /// The molecule's title (often a name or identifier; may be empty).
@@ -334,6 +359,61 @@ impl Molecule {
         with_ob(|| ffi::mol_set_conformer(self.inner.pin_mut(), index));
     }
 
+    /// Translate the molecule so its centroid sits at the origin.
+    pub fn center(&mut self) {
+        with_ob(|| ffi::mol_center(self.inner.pin_mut()));
+    }
+
+    /// Valence angle (in degrees) at atom `j` between atoms `i`, `j`, `k`
+    /// (0-based indices). Requires coordinates; returns `0.0` for invalid
+    /// indices.
+    pub fn angle(&self, i: u32, j: u32, k: u32) -> f64 {
+        with_ob(|| ffi::mol_angle(self.as_inner(), i + 1, j + 1, k + 1))
+    }
+
+    /// Torsion (dihedral) angle in degrees for atoms `i`, `j`, `k`, `l`
+    /// (0-based indices). Requires coordinates; returns `0.0` for invalid
+    /// indices.
+    pub fn torsion(&self, i: u32, j: u32, k: u32, l: u32) -> f64 {
+        with_ob(|| ffi::mol_torsion(self.as_inner(), i + 1, j + 1, k + 1, l + 1))
+    }
+
+    /// Remove disconnected fragments (e.g. counterions) smaller than
+    /// `min_atoms` atoms; `0` keeps only the single largest fragment. Returns
+    /// `true` if anything was removed.
+    pub fn strip_salts(&mut self, min_atoms: u32) -> bool {
+        with_ob(|| ffi::mol_strip_salts(self.inner.pin_mut(), min_atoms))
+    }
+
+    /// Split into its disconnected fragments, each returned as an owned
+    /// molecule. A connected molecule yields a single element.
+    pub fn separate(&self) -> Vec<Molecule> {
+        with_ob(|| {
+            ffi::mol_separate(self.as_inner())
+                .iter()
+                .map(|frag| Molecule {
+                    inner: ffi::mol_clone(frag),
+                })
+                .collect()
+        })
+    }
+
+    /// Read a string property previously attached under `key`, or `None`.
+    pub fn property(&self, key: &str) -> Option<String> {
+        let mut ok = true;
+        let value = with_ob(|| ffi::mol_get_property(self.as_inner(), key, &mut ok));
+        if ok {
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    /// Attach (or replace) a string property under `key`.
+    pub fn set_property(&mut self, key: &str, value: &str) {
+        with_ob(|| ffi::mol_set_property(self.inner.pin_mut(), key, value));
+    }
+
     /// The atom at 0-based `index`, or `None` if out of range.
     pub fn atom(&self, index: u32) -> Option<Atom<'_>> {
         if index < self.num_atoms() {
@@ -382,6 +462,15 @@ impl Molecule {
 impl Default for Molecule {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Clone for Molecule {
+    /// Deep-copy the molecule (a fully independent `OBMol`).
+    fn clone(&self) -> Self {
+        Molecule {
+            inner: with_ob(|| ffi::mol_clone(self.as_inner())),
+        }
     }
 }
 

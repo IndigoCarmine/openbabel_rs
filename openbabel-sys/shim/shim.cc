@@ -6,11 +6,15 @@
 #include <openbabel/descriptor.h>
 #include <openbabel/fingerprint.h>
 #include <openbabel/conformersearch.h>
+#include <openbabel/elements.h>
 #include <openbabel/forcefield.h>
+#include <openbabel/generic.h>
 #include <openbabel/math/align.h>
+#include <openbabel/math/vector3.h>
 #include <openbabel/obconversion.h>
 #include <openbabel/op.h>
 #include <openbabel/plugin.h>
+#include <openbabel/ring.h>
 #include <openbabel/stereo/cistrans.h>
 #include <openbabel/stereo/stereo.h>
 #include <openbabel/stereo/tetrahedral.h>
@@ -586,6 +590,245 @@ void mol_set_conformer(Molecule &mol, uint32_t index) {
     if (index < static_cast<uint32_t>(mol.mol.NumConformers()))
       mol.mol.SetConformer(index);
   } catch (...) {
+  }
+}
+
+// --- Element data --------------------------------------------------------
+
+rust::String element_symbol(uint32_t z) {
+  return rust::String(OpenBabel::OBElements::GetSymbol(z));
+}
+rust::String element_name(uint32_t z) {
+  return rust::String(OpenBabel::OBElements::GetName(z));
+}
+uint32_t element_atomic_number(rust::Str symbol) {
+  return OpenBabel::OBElements::GetAtomicNum(to_std(symbol).c_str());
+}
+double element_mass(uint32_t z) { return OpenBabel::OBElements::GetMass(z); }
+double element_exact_mass(uint32_t z) {
+  return OpenBabel::OBElements::GetExactMass(z, 0);
+}
+double element_electronegativity(uint32_t z) {
+  return OpenBabel::OBElements::GetElectroNeg(z);
+}
+double element_covalent_radius(uint32_t z) {
+  return OpenBabel::OBElements::GetCovalentRad(z);
+}
+double element_vdw_radius(uint32_t z) {
+  return OpenBabel::OBElements::GetVdwRad(z);
+}
+uint32_t element_max_bonds(uint32_t z) {
+  return OpenBabel::OBElements::GetMaxBonds(z);
+}
+
+// --- More atom accessors -------------------------------------------------
+
+rust::String atom_type(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? rust::String(a->GetType()) : rust::String();
+}
+uint32_t atom_isotope(const Molecule &mol, uint32_t idx) {
+  const auto *a = atom_at(mol, idx);
+  return a ? a->GetIsotope() : 0;
+}
+double atom_atomic_mass(const Molecule &mol, uint32_t idx) {
+  const auto *a = atom_at(mol, idx);
+  return a ? a->GetAtomicMass() : 0.0;
+}
+double atom_exact_mass(const Molecule &mol, uint32_t idx) {
+  const auto *a = atom_at(mol, idx);
+  return a ? a->GetExactMass() : 0.0;
+}
+int atom_spin_multiplicity(const Molecule &mol, uint32_t idx) {
+  const auto *a = atom_at(mol, idx);
+  return a ? a->GetSpinMultiplicity() : 0;
+}
+uint32_t atom_heavy_degree(const Molecule &mol, uint32_t idx) {
+  const auto *a = atom_at(mol, idx);
+  return a ? a->GetHvyDegree() : 0;
+}
+uint32_t atom_hetero_degree(const Molecule &mol, uint32_t idx) {
+  const auto *a = atom_at(mol, idx);
+  return a ? a->GetHeteroDegree() : 0;
+}
+bool atom_is_chiral(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsChiral() : false;
+}
+bool atom_is_heteroatom(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsHeteroatom() : false;
+}
+bool atom_is_metal(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsMetal() : false;
+}
+bool atom_is_polar_hydrogen(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsPolarHydrogen() : false;
+}
+uint32_t atom_member_of_ring_count(const Molecule &mol, uint32_t idx) {
+  const auto *a = atom_at(mol, idx);
+  return a ? a->MemberOfRingCount() : 0;
+}
+uint32_t atom_member_of_ring_size(const Molecule &mol, uint32_t idx) {
+  const auto *a = atom_at(mol, idx);
+  return a ? a->MemberOfRingSize() : 0;
+}
+bool atom_is_in_ring_size(const Molecule &mol, uint32_t idx, uint32_t size) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsInRingSize(static_cast<int>(size)) : false;
+}
+
+// --- More bond accessors -------------------------------------------------
+
+double bond_length(const Molecule &mol, uint32_t idx) {
+  auto *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->GetLength() : 0.0;
+}
+double bond_equilibrium_length(const Molecule &mol, uint32_t idx) {
+  auto *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->GetEquibLength() : 0.0;
+}
+bool bond_is_rotor(const Molecule &mol, uint32_t idx) {
+  auto *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->IsRotor() : false;
+}
+bool bond_is_amide(const Molecule &mol, uint32_t idx) {
+  auto *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->IsAmide() : false;
+}
+bool bond_is_ester(const Molecule &mol, uint32_t idx) {
+  auto *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->IsEster() : false;
+}
+bool bond_is_carbonyl(const Molecule &mol, uint32_t idx) {
+  auto *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->IsCarbonyl() : false;
+}
+bool bond_is_closure(const Molecule &mol, uint32_t idx) {
+  auto *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->IsClosure() : false;
+}
+
+// --- More whole-molecule methods -----------------------------------------
+
+uint32_t mol_num_heavy_atoms(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.NumHvyAtoms();
+}
+uint32_t mol_num_rotors(const Molecule &mol) {
+  try {
+    return const_cast<Molecule &>(mol).mol.NumRotors();
+  } catch (...) {
+    return 0;
+  }
+}
+uint32_t mol_num_rings(const Molecule &mol) {
+  try {
+    return static_cast<uint32_t>(const_cast<Molecule &>(mol).mol.GetSSSR().size());
+  } catch (...) {
+    return 0;
+  }
+}
+rust::String mol_spaced_formula(const Molecule &mol) {
+  try {
+    return rust::String(const_cast<Molecule &>(mol).mol.GetSpacedFormula());
+  } catch (...) {
+    return rust::String();
+  }
+}
+uint32_t mol_spin_multiplicity(const Molecule &mol) {
+  try {
+    return const_cast<Molecule &>(mol).mol.GetTotalSpinMultiplicity();
+  } catch (...) {
+    return 0;
+  }
+}
+void mol_center(Molecule &mol) {
+  try {
+    mol.mol.Center();
+  } catch (...) {
+  }
+}
+double mol_angle(const Molecule &mol, uint32_t i, uint32_t j, uint32_t k) {
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    OpenBabel::OBAtom *a = m.GetAtom(static_cast<int>(i));
+    OpenBabel::OBAtom *b = m.GetAtom(static_cast<int>(j));
+    OpenBabel::OBAtom *c = m.GetAtom(static_cast<int>(k));
+    if (!a || !b || !c) return 0.0;
+    return m.GetAngle(a, b, c);
+  } catch (...) {
+    return 0.0;
+  }
+}
+double mol_torsion(const Molecule &mol, uint32_t i, uint32_t j, uint32_t k,
+                   uint32_t l) {
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    OpenBabel::OBAtom *a = m.GetAtom(static_cast<int>(i));
+    OpenBabel::OBAtom *b = m.GetAtom(static_cast<int>(j));
+    OpenBabel::OBAtom *c = m.GetAtom(static_cast<int>(k));
+    OpenBabel::OBAtom *d = m.GetAtom(static_cast<int>(l));
+    if (!a || !b || !c || !d) return 0.0;
+    return OpenBabel::CalcTorsionAngle(a->GetVector(), b->GetVector(),
+                                       c->GetVector(), d->GetVector());
+  } catch (...) {
+    return 0.0;
+  }
+}
+std::unique_ptr<Molecule> mol_clone(const Molecule &mol) {
+  auto m = std::unique_ptr<Molecule>(new Molecule());
+  m->mol = const_cast<Molecule &>(mol).mol;  // OBMol copy assignment
+  return m;
+}
+bool mol_strip_salts(Molecule &mol, uint32_t threshold) {
+  try {
+    return mol.mol.StripSalts(threshold);
+  } catch (...) {
+    return false;
+  }
+}
+std::unique_ptr<std::vector<Molecule>> mol_separate(const Molecule &mol) {
+  auto out = std::unique_ptr<std::vector<Molecule>>(new std::vector<Molecule>());
+  try {
+    std::vector<OpenBabel::OBMol> frags =
+        const_cast<Molecule &>(mol).mol.Separate();
+    out->reserve(frags.size());
+    for (auto &f : frags) {
+      Molecule wrapped;
+      wrapped.mol = f;
+      out->push_back(std::move(wrapped));
+    }
+  } catch (...) {
+  }
+  return out;
+}
+void mol_set_property(Molecule &mol, rust::Str key, rust::Str value) {
+  try {
+    std::string k = to_std(key);
+    if (mol.mol.HasData(k)) mol.mol.DeleteData(k);
+    OpenBabel::OBPairData *pd = new OpenBabel::OBPairData();
+    pd->SetAttribute(k);
+    pd->SetValue(to_std(value));
+    mol.mol.SetData(pd);
+  } catch (...) {
+  }
+}
+rust::String mol_get_property(const Molecule &mol, rust::Str key, bool &ok) {
+  try {
+    OpenBabel::OBGenericData *d =
+        const_cast<Molecule &>(mol).mol.GetData(to_std(key));
+    OpenBabel::OBPairData *pd = dynamic_cast<OpenBabel::OBPairData *>(d);
+    if (!pd) {
+      ok = false;
+      return rust::String();
+    }
+    ok = true;
+    return rust::String(pd->GetValue());
+  } catch (...) {
+    ok = false;
+    return rust::String();
   }
 }
 

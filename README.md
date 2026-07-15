@@ -92,6 +92,22 @@ Conformer search:
   walk the results and `energy` to score each. Uses the Eigen support enabled
   above.
 
+Element data & extended queries:
+
+- Periodic-table data in the `elements` module: `symbol` / `name` /
+  `atomic_number` / `mass` / `exact_mass` / `electronegativity` /
+  `covalent_radius` / `vdw_radius` / `max_bonds`.
+- Richer atom queries: `type_name`, `isotope`, `atomic_mass` / `exact_mass`,
+  `spin_multiplicity`, `heavy_degree` / `hetero_degree`, `is_chiral` /
+  `is_heteroatom` / `is_metal` / `is_polar_hydrogen`, ring membership
+  (`ring_count`, `smallest_ring_size`, `is_in_ring_size`).
+- Richer bond queries: `length`, `equilibrium_length`, `is_rotor`, `is_amide` /
+  `is_ester` / `is_carbonyl` / `is_closure`.
+- Molecule extras: `num_heavy_atoms`, `num_rings`, `num_rotatable_bonds`,
+  `spaced_formula`, `spin_multiplicity`, `center`, `angle` / `torsion`
+  measurements, `clone`, `strip_salts`, `separate` (into fragments), and
+  string `property` / `set_property` metadata.
+
 ## Thread safety
 
 OpenBabel is not thread-safe — it keeps global mutable state (shared plugin

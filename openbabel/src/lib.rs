@@ -14,6 +14,7 @@
 
 mod atom;
 mod bond;
+pub mod elements;
 mod error;
 mod fingerprint;
 mod mol;

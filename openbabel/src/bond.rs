@@ -47,6 +47,41 @@ impl<'mol> Bond<'mol> {
     pub fn is_cistrans_stereo(&self) -> bool {
         crate::with_ob(|| ffi::bond_is_cistrans_stereo(self.mol, self.ob_idx))
     }
+
+    /// Geometric length of the bond (needs coordinates; `0` without them).
+    pub fn length(&self) -> f64 {
+        crate::with_ob(|| ffi::bond_length(self.mol, self.ob_idx))
+    }
+
+    /// Equilibrium bond length from OpenBabel's tabulated covalent radii.
+    pub fn equilibrium_length(&self) -> f64 {
+        crate::with_ob(|| ffi::bond_equilibrium_length(self.mol, self.ob_idx))
+    }
+
+    /// Whether this bond is freely rotatable (single, acyclic, non-terminal).
+    pub fn is_rotor(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_rotor(self.mol, self.ob_idx))
+    }
+
+    /// Whether this bond is the C–N bond of an amide.
+    pub fn is_amide(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_amide(self.mol, self.ob_idx))
+    }
+
+    /// Whether this bond is the C–O single bond of an ester.
+    pub fn is_ester(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_ester(self.mol, self.ob_idx))
+    }
+
+    /// Whether this bond is a carbonyl (C=O) bond.
+    pub fn is_carbonyl(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_carbonyl(self.mol, self.ob_idx))
+    }
+
+    /// Whether this bond is a ring-closure bond (as written in SMILES).
+    pub fn is_closure(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_closure(self.mol, self.ob_idx))
+    }
 }
 
 impl std::fmt::Debug for Bond<'_> {

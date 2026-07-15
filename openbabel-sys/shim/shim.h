@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <openbabel/mol.h>
 #include <openbabel/parsmart.h>
@@ -198,5 +199,64 @@ uint32_t mol_generate_conformers(Molecule &mol, uint32_t count);
 uint32_t mol_num_conformers(const Molecule &mol);
 // Make conformer `index` the active coordinates (no-op if out of range).
 void mol_set_conformer(Molecule &mol, uint32_t index);
+
+// --- Element data (OBElements, keyed by atomic number) --------------------
+rust::String element_symbol(uint32_t atomic_number);
+rust::String element_name(uint32_t atomic_number);
+uint32_t element_atomic_number(rust::Str symbol);
+double element_mass(uint32_t atomic_number);         // standard atomic weight
+double element_exact_mass(uint32_t atomic_number);   // most abundant isotope
+double element_electronegativity(uint32_t atomic_number);  // Pauling
+double element_covalent_radius(uint32_t atomic_number);    // Angstrom
+double element_vdw_radius(uint32_t atomic_number);         // Angstrom
+uint32_t element_max_bonds(uint32_t atomic_number);
+
+// --- More atom accessors (idx is 1-based) ---------------------------------
+rust::String atom_type(const Molecule &mol, uint32_t idx);  // OB atom type, e.g. "C3"
+uint32_t atom_isotope(const Molecule &mol, uint32_t idx);
+double atom_atomic_mass(const Molecule &mol, uint32_t idx);
+double atom_exact_mass(const Molecule &mol, uint32_t idx);
+int atom_spin_multiplicity(const Molecule &mol, uint32_t idx);
+uint32_t atom_heavy_degree(const Molecule &mol, uint32_t idx);   // heavy-atom neighbours
+uint32_t atom_hetero_degree(const Molecule &mol, uint32_t idx);  // heteroatom neighbours
+bool atom_is_chiral(const Molecule &mol, uint32_t idx);
+bool atom_is_heteroatom(const Molecule &mol, uint32_t idx);
+bool atom_is_metal(const Molecule &mol, uint32_t idx);
+bool atom_is_polar_hydrogen(const Molecule &mol, uint32_t idx);
+uint32_t atom_member_of_ring_count(const Molecule &mol, uint32_t idx);
+uint32_t atom_member_of_ring_size(const Molecule &mol, uint32_t idx);  // smallest ring, 0 if none
+bool atom_is_in_ring_size(const Molecule &mol, uint32_t idx, uint32_t size);
+
+// --- More bond accessors (idx is 0-based) ---------------------------------
+double bond_length(const Molecule &mol, uint32_t idx);
+double bond_equilibrium_length(const Molecule &mol, uint32_t idx);
+bool bond_is_rotor(const Molecule &mol, uint32_t idx);
+bool bond_is_amide(const Molecule &mol, uint32_t idx);
+bool bond_is_ester(const Molecule &mol, uint32_t idx);
+bool bond_is_carbonyl(const Molecule &mol, uint32_t idx);
+bool bond_is_closure(const Molecule &mol, uint32_t idx);  // ring-closure bond
+
+// --- More whole-molecule methods ------------------------------------------
+uint32_t mol_num_heavy_atoms(const Molecule &mol);
+uint32_t mol_num_rotors(const Molecule &mol);   // rotatable bonds
+uint32_t mol_num_rings(const Molecule &mol);    // SSSR ring count
+rust::String mol_spaced_formula(const Molecule &mol);
+uint32_t mol_spin_multiplicity(const Molecule &mol);
+// Translate the molecule so its centroid is at the origin.
+void mol_center(Molecule &mol);
+// Bond/valence angle i-j-k in degrees (atom indices 1-based); 0 if invalid.
+double mol_angle(const Molecule &mol, uint32_t i, uint32_t j, uint32_t k);
+// Torsion angle i-j-k-l in degrees (atom indices 1-based); 0 if invalid.
+double mol_torsion(const Molecule &mol, uint32_t i, uint32_t j, uint32_t k, uint32_t l);
+// Deep-copy the molecule.
+std::unique_ptr<Molecule> mol_clone(const Molecule &mol);
+// Remove disconnected fragments with fewer than `threshold` atoms (0 keeps
+// only the largest fragment). Returns true if anything was removed.
+bool mol_strip_salts(Molecule &mol, uint32_t threshold);
+// Split into disconnected fragments (each a fresh molecule).
+std::unique_ptr<std::vector<Molecule>> mol_separate(const Molecule &mol);
+// String property (OBPairData) access by key.
+void mol_set_property(Molecule &mol, rust::Str key, rust::Str value);
+rust::String mol_get_property(const Molecule &mol, rust::Str key, bool &ok);
 
 }  // namespace ob_shim

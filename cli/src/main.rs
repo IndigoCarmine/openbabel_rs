@@ -29,6 +29,8 @@ fn main() {
     println!("Total charge:      {}", mol.total_charge());
     println!("Heavy atoms:       {}", mol.num_atoms());
     println!("Bonds:             {}", mol.num_bonds());
+    println!("Rings (SSSR):      {}", mol.num_rings());
+    println!("Rotatable bonds:   {}", mol.num_rotatable_bonds());
 
     // Descriptors (T2).
     if let Some(v) = mol.logp() {

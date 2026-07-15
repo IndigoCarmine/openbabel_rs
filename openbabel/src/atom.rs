@@ -114,6 +114,76 @@ impl<'mol> Atom<'mol> {
             _ => None,
         }
     }
+
+    /// OpenBabel's internal atom type string (e.g. `"C3"`, `"O2"`, `"Nam"`).
+    pub fn type_name(&self) -> String {
+        crate::with_ob(|| ffi::atom_type(self.mol, self.ob_idx))
+    }
+
+    /// Isotope number, or `0` for the element's default isotopic mix.
+    pub fn isotope(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_isotope(self.mol, self.ob_idx))
+    }
+
+    /// Standard atomic mass of this atom (accounts for its isotope, if set).
+    pub fn atomic_mass(&self) -> f64 {
+        crate::with_ob(|| ffi::atom_atomic_mass(self.mol, self.ob_idx))
+    }
+
+    /// Exact (isotopic) mass of this atom.
+    pub fn exact_mass(&self) -> f64 {
+        crate::with_ob(|| ffi::atom_exact_mass(self.mol, self.ob_idx))
+    }
+
+    /// Spin multiplicity (0 if unset; 2 = radical, 3 = carbene/triplet, …).
+    pub fn spin_multiplicity(&self) -> i32 {
+        crate::with_ob(|| ffi::atom_spin_multiplicity(self.mol, self.ob_idx))
+    }
+
+    /// Number of heavy-atom (non-hydrogen) neighbours.
+    pub fn heavy_degree(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_heavy_degree(self.mol, self.ob_idx))
+    }
+
+    /// Number of heteroatom (non-C, non-H) neighbours.
+    pub fn hetero_degree(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_hetero_degree(self.mol, self.ob_idx))
+    }
+
+    /// Whether this atom is a chiral center.
+    pub fn is_chiral(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_chiral(self.mol, self.ob_idx))
+    }
+
+    /// Whether this atom is a heteroatom (not carbon or hydrogen).
+    pub fn is_heteroatom(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_heteroatom(self.mol, self.ob_idx))
+    }
+
+    /// Whether this atom is a metal.
+    pub fn is_metal(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_metal(self.mol, self.ob_idx))
+    }
+
+    /// Whether this is a hydrogen bonded to N, O, P, or S (a polar hydrogen).
+    pub fn is_polar_hydrogen(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_polar_hydrogen(self.mol, self.ob_idx))
+    }
+
+    /// Number of rings this atom belongs to.
+    pub fn ring_count(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_member_of_ring_count(self.mol, self.ob_idx))
+    }
+
+    /// Size of the smallest ring containing this atom, or `0` if it is in none.
+    pub fn smallest_ring_size(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_member_of_ring_size(self.mol, self.ob_idx))
+    }
+
+    /// Whether this atom is a member of a ring of exactly `size` atoms.
+    pub fn is_in_ring_size(&self, size: u32) -> bool {
+        crate::with_ob(|| ffi::atom_is_in_ring_size(self.mol, self.ob_idx, size))
+    }
 }
 
 impl std::fmt::Debug for Atom<'_> {

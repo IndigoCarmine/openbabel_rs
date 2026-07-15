@@ -178,6 +178,64 @@ pub mod ffi {
         fn mol_num_conformers(mol: &Molecule) -> u32;
         /// Make conformer `index` the active coordinates (no-op if out of range).
         fn mol_set_conformer(mol: Pin<&mut Molecule>, index: u32);
+
+        // Element data (by atomic number).
+        fn element_symbol(atomic_number: u32) -> String;
+        fn element_name(atomic_number: u32) -> String;
+        fn element_atomic_number(symbol: &str) -> u32;
+        fn element_mass(atomic_number: u32) -> f64;
+        fn element_exact_mass(atomic_number: u32) -> f64;
+        fn element_electronegativity(atomic_number: u32) -> f64;
+        fn element_covalent_radius(atomic_number: u32) -> f64;
+        fn element_vdw_radius(atomic_number: u32) -> f64;
+        fn element_max_bonds(atomic_number: u32) -> u32;
+
+        // More atom accessors.
+        fn atom_type(mol: &Molecule, idx: u32) -> String;
+        fn atom_isotope(mol: &Molecule, idx: u32) -> u32;
+        fn atom_atomic_mass(mol: &Molecule, idx: u32) -> f64;
+        fn atom_exact_mass(mol: &Molecule, idx: u32) -> f64;
+        fn atom_spin_multiplicity(mol: &Molecule, idx: u32) -> i32;
+        fn atom_heavy_degree(mol: &Molecule, idx: u32) -> u32;
+        fn atom_hetero_degree(mol: &Molecule, idx: u32) -> u32;
+        fn atom_is_chiral(mol: &Molecule, idx: u32) -> bool;
+        fn atom_is_heteroatom(mol: &Molecule, idx: u32) -> bool;
+        fn atom_is_metal(mol: &Molecule, idx: u32) -> bool;
+        fn atom_is_polar_hydrogen(mol: &Molecule, idx: u32) -> bool;
+        fn atom_member_of_ring_count(mol: &Molecule, idx: u32) -> u32;
+        fn atom_member_of_ring_size(mol: &Molecule, idx: u32) -> u32;
+        fn atom_is_in_ring_size(mol: &Molecule, idx: u32, size: u32) -> bool;
+
+        // More bond accessors.
+        fn bond_length(mol: &Molecule, idx: u32) -> f64;
+        fn bond_equilibrium_length(mol: &Molecule, idx: u32) -> f64;
+        fn bond_is_rotor(mol: &Molecule, idx: u32) -> bool;
+        fn bond_is_amide(mol: &Molecule, idx: u32) -> bool;
+        fn bond_is_ester(mol: &Molecule, idx: u32) -> bool;
+        fn bond_is_carbonyl(mol: &Molecule, idx: u32) -> bool;
+        fn bond_is_closure(mol: &Molecule, idx: u32) -> bool;
+
+        // More whole-molecule methods.
+        fn mol_num_heavy_atoms(mol: &Molecule) -> u32;
+        fn mol_num_rotors(mol: &Molecule) -> u32;
+        fn mol_num_rings(mol: &Molecule) -> u32;
+        fn mol_spaced_formula(mol: &Molecule) -> String;
+        fn mol_spin_multiplicity(mol: &Molecule) -> u32;
+        /// Translate the molecule so its centroid is at the origin.
+        fn mol_center(mol: Pin<&mut Molecule>);
+        /// Valence angle i-j-k in degrees (1-based atom indices).
+        fn mol_angle(mol: &Molecule, i: u32, j: u32, k: u32) -> f64;
+        /// Torsion angle i-j-k-l in degrees (1-based atom indices).
+        fn mol_torsion(mol: &Molecule, i: u32, j: u32, k: u32, l: u32) -> f64;
+        /// Deep-copy the molecule.
+        fn mol_clone(mol: &Molecule) -> UniquePtr<Molecule>;
+        /// Remove fragments smaller than `threshold` atoms (0 = keep largest).
+        fn mol_strip_salts(mol: Pin<&mut Molecule>, threshold: u32) -> bool;
+        /// Split into disconnected fragments (each a fresh molecule).
+        fn mol_separate(mol: &Molecule) -> UniquePtr<CxxVector<Molecule>>;
+        /// Set/get a string property (OBPairData) by key.
+        fn mol_set_property(mol: Pin<&mut Molecule>, key: &str, value: &str);
+        fn mol_get_property(mol: &Molecule, key: &str, ok: &mut bool) -> String;
     }
 }
 
