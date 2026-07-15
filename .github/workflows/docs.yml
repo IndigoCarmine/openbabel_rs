@@ -1,0 +1,84 @@
+name: Docs
+
+# Builds and publishes the documentation site to GitHub Pages:
+#   /            English mdBook guide
+#   /ja/         Japanese mdBook guide
+#   /api/        rustdoc API reference (English)
+#
+# Note: `cargo doc` compiles OpenBabel from source (~10-20 min on a cold cache);
+# Swatinem/rust-cache keeps that warm across runs. The mdBook steps are fast and
+# independent of it.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; don't cancel an in-progress one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build (keeps the OpenBabel source build warm)
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Install mdbook + i18n helpers
+        run: cargo install mdbook mdbook-i18n-helpers --locked
+
+      - name: Build API reference (rustdoc)
+        run: cargo doc --workspace --no-deps
+
+      - name: Build mdBook — English
+        working-directory: docs
+        run: mdbook build -d book/en
+
+      - name: Build mdBook — Japanese
+        working-directory: docs
+        env:
+          MDBOOK_BOOK__LANGUAGE: ja
+        run: mdbook build -d book/ja
+
+      - name: Assemble site
+        run: |
+          mkdir -p site/ja site/api
+          cp -r docs/book/en/. site/
+          cp -r docs/book/ja/. site/ja/
+          cp -r target/doc/. site/api/
+          # /api/ -> the crate's rustdoc landing page.
+          printf '<meta http-equiv="refresh" content="0; url=openbabel/index.html">\n' > site/api/index.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,30 @@
+# mdBook configuration for the openbabel-rs prose guide.
+#
+# The guide is authored in English under `src/`. Japanese is produced by the
+# gettext workflow (mdbook-i18n-helpers): messages are extracted to
+# `po/messages.pot`, translated in `po/ja.po`, and applied at build time.
+#
+#   English (default):   mdbook build
+#   Japanese:            MDBOOK_BOOK__LANGUAGE=ja mdbook build -d book/ja
+#
+# See `README` in this directory (docs/README.md) for the full workflow.
+
+[book]
+title = "openbabel-rs Guide"
+authors = ["IndigoCarmine"]
+description = "Architecture and usage guide for the openbabel-rs Rust bindings."
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "ayu"
+git-repository-url = "https://github.com/IndigoCarmine/openbabel_rs"
+edit-url-template = "https://github.com/IndigoCarmine/openbabel_rs/edit/master/docs/{path}"
+additional-js = ["theme/language-picker.js"]
+additional-css = ["theme/language-picker.css"]
+
+# The gettext preprocessor is a no-op for the source language (en, no po/en.po)
+# and applies po/<language>.po when the language is overridden (e.g. ja).
+[preprocessor.gettext]
+after = ["links"]

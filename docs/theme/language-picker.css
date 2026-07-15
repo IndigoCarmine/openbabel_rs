@@ -1,0 +1,44 @@
+/* Language picker in the menu bar (see language-picker.js). */
+
+.lang-picker-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+/* Button showing the current language; matches the menu bar's icon buttons but
+   widened to fit a text label. */
+.lang-button {
+    width: auto;
+    padding: 0 8px;
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+/* Position the dropdown under the button, right-aligned, overriding the default
+   theme-popup placement (which is anchored to the far left of the menu bar). */
+#language-list.theme-popup {
+    left: auto;
+    right: 6px;
+    top: var(--menu-bar-height, 50px);
+    min-width: 8rem;
+}
+
+#language-list .theme {
+    list-style: none;
+}
+
+#language-list .theme a {
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    color: inherit;
+    text-decoration: none;
+}
+
+#language-list .theme a:hover {
+    background: var(--theme-hover);
+}
+
+#language-list .theme[aria-current="true"] a {
+    font-weight: bold;
+}
