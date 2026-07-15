@@ -46,6 +46,16 @@ Analysis:
 > Distance-geometry 3D generation (`--gen3d dg`) needs Eigen, which this build
 > disables; the default fragment-builder path used by `generate_3d` does not.
 
+Charges, atom chemistry & identifiers:
+
+- Partial atomic charges (`Molecule::compute_charges`) via the `gasteiger`,
+  `mmff94`, `eem`, `eqeq`, `qeq`, and `qtpie` models; per-atom values through
+  `Atom::partial_charge`.
+- Richer atom chemistry: `degree`, `total_valence`, `implicit_hydrogens`,
+  `hybridization`, `is_hbond_donor`, `is_hbond_acceptor`.
+- InChI / InChIKey identifiers (`Molecule::inchi` / `inchikey`), backed by the
+  InChI library bundled with OpenBabel.
+
 ## Thread safety
 
 OpenBabel is not thread-safe — it keeps global mutable state (shared plugin
@@ -96,6 +106,14 @@ println!("{}", mol.write("can")?.trim());          // canonical SMILES
   the DLL **and** the plugins next to the test/exe binaries. Data files are
   located via `BABEL_DATADIR`, which the safe wrapper sets through the C
   runtime so OpenBabel's `getenv` observes it.
+- Building the bundled InChI from source on MSVC needs two fixes, both applied
+  by `build.rs`: OpenBabel force-sets `OPENBABEL_USE_SYSTEM_INCHI=ON` when
+  `OB_USE_PREBUILT_BINARIES` is on (its MSVC default), which makes configuration
+  demand a system InChI we don't have — so we turn that flag off; and the
+  vendored InChI omits four AuxInfo functions its ABI wrappers reference, so
+  `build.rs` drops inert stubs into the InChI tree so `inchi.dll` links. Both
+  are runtime-inert (OpenBabel never calls those functions for InChI output).
+  `inchi.dll` is copied alongside the other runtime DLLs.
 
 ## License
 

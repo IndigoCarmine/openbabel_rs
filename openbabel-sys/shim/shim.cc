@@ -2,6 +2,7 @@
 
 #include <openbabel/atom.h>
 #include <openbabel/bond.h>
+#include <openbabel/chargemodel.h>
 #include <openbabel/descriptor.h>
 #include <openbabel/fingerprint.h>
 #include <openbabel/forcefield.h>
@@ -159,6 +160,10 @@ int atom_formal_charge(const Molecule &mol, uint32_t idx) {
   const auto *a = atom_at(mol, idx);
   return a ? a->GetFormalCharge() : 0;
 }
+double atom_partial_charge(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->GetPartialCharge() : 0.0;
+}
 bool atom_is_aromatic(const Molecule &mol, uint32_t idx) {
   auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
   return a ? a->IsAromatic() : false;
@@ -166,6 +171,30 @@ bool atom_is_aromatic(const Molecule &mol, uint32_t idx) {
 bool atom_is_in_ring(const Molecule &mol, uint32_t idx) {
   auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
   return a ? a->IsInRing() : false;
+}
+uint32_t atom_degree(const Molecule &mol, uint32_t idx) {
+  const auto *a = atom_at(mol, idx);
+  return a ? a->GetExplicitDegree() : 0;
+}
+uint32_t atom_total_valence(const Molecule &mol, uint32_t idx) {
+  const auto *a = atom_at(mol, idx);
+  return a ? a->GetTotalValence() : 0;
+}
+uint32_t atom_implicit_h_count(const Molecule &mol, uint32_t idx) {
+  const auto *a = atom_at(mol, idx);
+  return a ? a->GetImplicitHCount() : 0;
+}
+uint32_t atom_hybridization(const Molecule &mol, uint32_t idx) {
+  const auto *a = atom_at(mol, idx);
+  return a ? a->GetHyb() : 0;
+}
+bool atom_is_hbond_donor(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsHbondDonor() : false;
+}
+bool atom_is_hbond_acceptor(const Molecule &mol, uint32_t idx) {
+  auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsHbondAcceptor() : false;
 }
 
 uint32_t bond_begin_idx(const Molecule &mol, uint32_t idx) {
@@ -349,5 +378,18 @@ bool mol_make_3d(Molecule &mol, rust::Str speed) {
 }
 
 uint32_t mol_dimension(const Molecule &mol) { return mol.mol.GetDimension(); }
+
+// --- Partial charges -----------------------------------------------------
+
+bool mol_compute_charges(Molecule &mol, rust::Str model) {
+  try {
+    OpenBabel::OBChargeModel *cm = dynamic_cast<OpenBabel::OBChargeModel *>(
+        OpenBabel::OBPlugin::GetPlugin("charges", to_std(model).c_str()));
+    if (!cm) return false;
+    return cm->ComputeCharges(mol.mol);
+  } catch (...) {
+    return false;
+  }
+}
 
 }  // namespace ob_shim

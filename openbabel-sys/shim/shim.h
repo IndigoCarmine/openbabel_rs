@@ -72,8 +72,15 @@ double atom_x(const Molecule &mol, uint32_t idx);
 double atom_y(const Molecule &mol, uint32_t idx);
 double atom_z(const Molecule &mol, uint32_t idx);
 int atom_formal_charge(const Molecule &mol, uint32_t idx);
+double atom_partial_charge(const Molecule &mol, uint32_t idx);
 bool atom_is_aromatic(const Molecule &mol, uint32_t idx);
 bool atom_is_in_ring(const Molecule &mol, uint32_t idx);
+uint32_t atom_degree(const Molecule &mol, uint32_t idx);       // explicit connections
+uint32_t atom_total_valence(const Molecule &mol, uint32_t idx);
+uint32_t atom_implicit_h_count(const Molecule &mol, uint32_t idx);
+uint32_t atom_hybridization(const Molecule &mol, uint32_t idx); // 1=sp,2=sp2,3=sp3,...
+bool atom_is_hbond_donor(const Molecule &mol, uint32_t idx);
+bool atom_is_hbond_acceptor(const Molecule &mol, uint32_t idx);
 
 // --- Bond accessors (idx is 0-based, 0..num_bonds, as in OpenBabel) -------
 // Returned atom indices are 1-based (OpenBabel's GetBeginAtomIdx/EndAtomIdx).
@@ -125,5 +132,11 @@ double mol_optimize(Molecule &mol, rust::Str ff_id, uint32_t steps, bool &ok);
 bool mol_make_3d(Molecule &mol, rust::Str speed);
 // Coordinate dimension of `mol`: 0 (none), 2, or 3.
 uint32_t mol_dimension(const Molecule &mol);
+
+// --- Partial charges ------------------------------------------------------
+// Assign partial atomic charges using charge model `model` ("gasteiger",
+// "mmff94", "eem", "eqeq", "qeq", "qtpie"). Returns false on unknown model or
+// failure. After this, atom_partial_charge() reflects the assigned charges.
+bool mol_compute_charges(Molecule &mol, rust::Str model);
 
 }  // namespace ob_shim

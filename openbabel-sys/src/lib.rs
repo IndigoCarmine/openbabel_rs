@@ -58,8 +58,15 @@ pub mod ffi {
         fn atom_y(mol: &Molecule, idx: u32) -> f64;
         fn atom_z(mol: &Molecule, idx: u32) -> f64;
         fn atom_formal_charge(mol: &Molecule, idx: u32) -> i32;
+        fn atom_partial_charge(mol: &Molecule, idx: u32) -> f64;
         fn atom_is_aromatic(mol: &Molecule, idx: u32) -> bool;
         fn atom_is_in_ring(mol: &Molecule, idx: u32) -> bool;
+        fn atom_degree(mol: &Molecule, idx: u32) -> u32;
+        fn atom_total_valence(mol: &Molecule, idx: u32) -> u32;
+        fn atom_implicit_h_count(mol: &Molecule, idx: u32) -> u32;
+        fn atom_hybridization(mol: &Molecule, idx: u32) -> u32;
+        fn atom_is_hbond_donor(mol: &Molecule, idx: u32) -> bool;
+        fn atom_is_hbond_acceptor(mol: &Molecule, idx: u32) -> bool;
 
         // Bond accessors (idx is 0-based, 0..num_bonds). Atom indices returned
         // are 1-based.
@@ -107,6 +114,11 @@ pub mod ffi {
         fn mol_make_3d(mol: Pin<&mut Molecule>, speed: &str) -> bool;
         /// Coordinate dimension: 0, 2, or 3.
         fn mol_dimension(mol: &Molecule) -> u32;
+
+        // Partial charges.
+        /// Assign partial charges with model `model` ("gasteiger"/"mmff94"/
+        /// "eem"/...); false on unknown model or failure.
+        fn mol_compute_charges(mol: Pin<&mut Molecule>, model: &str) -> bool;
     }
 }
 

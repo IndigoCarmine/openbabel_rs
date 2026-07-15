@@ -54,6 +54,22 @@ impl Molecule {
         }
     }
 
+    /// Standard InChI identifier, e.g. `"InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3"`.
+    ///
+    /// Returns `None` if InChI support is not compiled into the linked
+    /// OpenBabel. Convenience wrapper over `write("inchi")`.
+    pub fn inchi(&self) -> Option<String> {
+        self.write("inchi").ok().map(|s| s.trim().to_string())
+    }
+
+    /// Standard InChIKey, e.g. `"LFQSCWFLJHTTHZ-UHFFFAOYSA-N"`.
+    ///
+    /// Returns `None` if InChI support is not compiled in. Convenience wrapper
+    /// over `write("inchikey")`.
+    pub fn inchikey(&self) -> Option<String> {
+        self.write("inchikey").ok().map(|s| s.trim().to_string())
+    }
+
     /// Molecular formula in Hill order, e.g. `"C2H6O"` (counts implicit H).
     pub fn formula(&self) -> String {
         with_ob(|| ffi::mol_formula(self.as_inner()))
@@ -129,6 +145,15 @@ impl Molecule {
     /// Molar refractivity (MR).
     pub fn molar_refractivity(&self) -> Option<f64> {
         self.descriptor("MR")
+    }
+
+    /// Assign partial atomic charges using the named charge model
+    /// (`"gasteiger"`, `"mmff94"`, `"eem"`, `"eqeq"`, `"qeq"`, `"qtpie"`).
+    ///
+    /// Returns `false` if the model is unknown or fails. Afterwards
+    /// [`Atom::partial_charge`](crate::Atom::partial_charge) reflects the result.
+    pub fn compute_charges(&mut self, model: &str) -> bool {
+        with_ob(|| ffi::mol_compute_charges(self.inner.pin_mut(), model))
     }
 
     /// Coordinate dimension: `0` (no coordinates), `2`, or `3`.

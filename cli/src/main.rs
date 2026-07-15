@@ -50,6 +50,14 @@ fn main() {
         Err(e) => eprintln!("canonical SMILES failed: {e}"),
     }
 
+    // Structure identifiers (T4).
+    if let Some(inchi) = mol.inchi() {
+        println!("InChI:             {inchi}");
+    }
+    if let Some(key) = mol.inchikey() {
+        println!("InChIKey:          {key}");
+    }
+
     // Generate a 3D structure and report a force-field energy (T3).
     if mol.generate_3d() {
         let unit = openbabel::forcefield_energy_unit("MMFF94").unwrap_or_default();
@@ -61,13 +69,21 @@ fn main() {
         }
     }
 
+    // Assign partial atomic charges so the per-atom listing can show them (T4).
+    let charged = mol.compute_charges("gasteiger");
+    if charged {
+        println!("Charge model:      gasteiger");
+    }
+
     println!("\nAtoms:");
     for atom in mol.atoms() {
         let (x, y, z) = atom.coords();
         println!(
-            "  #{:<3} Z={:<3} aromatic={:<5} ring={:<5} coords=({x:.3}, {y:.3}, {z:.3})",
+            "  #{:<3} Z={:<3} q={:+.3} hyb={} arom={:<5} ring={:<5} coords=({x:.3}, {y:.3}, {z:.3})",
             atom.index(),
             atom.atomic_number(),
+            atom.partial_charge(),
+            atom.hybridization(),
             atom.is_aromatic(),
             atom.is_in_ring(),
         );

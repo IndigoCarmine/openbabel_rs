@@ -41,6 +41,15 @@ impl<'mol> Atom<'mol> {
         crate::with_ob(|| ffi::atom_formal_charge(self.mol, self.ob_idx))
     }
 
+    /// Partial (fractional) atomic charge.
+    ///
+    /// Reflects the last model assigned via
+    /// [`Molecule::compute_charges`](crate::Molecule::compute_charges); if none
+    /// was, OpenBabel computes Gasteiger charges on demand.
+    pub fn partial_charge(&self) -> f64 {
+        crate::with_ob(|| ffi::atom_partial_charge(self.mol, self.ob_idx))
+    }
+
     /// Whether this atom is part of an aromatic system.
     pub fn is_aromatic(&self) -> bool {
         crate::with_ob(|| ffi::atom_is_aromatic(self.mol, self.ob_idx))
@@ -49,6 +58,36 @@ impl<'mol> Atom<'mol> {
     /// Whether this atom is a member of any ring.
     pub fn is_in_ring(&self) -> bool {
         crate::with_ob(|| ffi::atom_is_in_ring(self.mol, self.ob_idx))
+    }
+
+    /// Number of explicit connections (bonds) to this atom.
+    pub fn degree(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_degree(self.mol, self.ob_idx))
+    }
+
+    /// Total valence, counting implicit hydrogens.
+    pub fn total_valence(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_total_valence(self.mol, self.ob_idx))
+    }
+
+    /// Number of implicit (not explicitly present) hydrogens on this atom.
+    pub fn implicit_hydrogens(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_implicit_h_count(self.mol, self.ob_idx))
+    }
+
+    /// Hybridization: 1 = sp, 2 = sp², 3 = sp³, … (0 if unassigned).
+    pub fn hybridization(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_hybridization(self.mol, self.ob_idx))
+    }
+
+    /// Whether this atom can donate a hydrogen bond.
+    pub fn is_hbond_donor(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_hbond_donor(self.mol, self.ob_idx))
+    }
+
+    /// Whether this atom can accept a hydrogen bond.
+    pub fn is_hbond_acceptor(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_hbond_acceptor(self.mol, self.ob_idx))
     }
 }
 
