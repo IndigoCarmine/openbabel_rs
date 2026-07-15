@@ -20,7 +20,7 @@ build the reference locally with `cargo doc --workspace --no-deps --open`.
 | Crate           | Role                                                                 |
 | --------------- | ------------------------------------------------------------------- |
 | `openbabel-sys` | Low-level FFI: a `cxx` bridge + C++ shim; `build.rs` builds OpenBabel from source and links it. |
-| `openbabel`     | Safe, idiomatic API: `Molecule`, `Atom`, `Bond`, `Residue`, `Ring`, `SmartsPattern`, `Fingerprint`, `Transform`, `Minimizer` / `Constraints`, the `elements` module, `Error`. |
+| `openbabel`     | Safe, idiomatic API: `Molecule`, `Atom`, `Bond`, `Residue`, `Ring`, `UnitCell`, `SmartsPattern`, `Fingerprint`, `Transform`, `Minimizer` / `Constraints`, the `elements` module, `Error`. |
 | `cli`           | `openbabel-demo` — a small SMILES-inspection demo.                   |
 
 Dependencies are vendored as git submodules: OpenBabel at `vendor/openbabel-src`
@@ -175,6 +175,17 @@ Rings & multi-molecule I/O:
   `size`, `atom_indices`, and `is_aromatic`.
 - Read or write many molecules at once: `Molecule::parse_many` (every record of
   a multi-SDF, one SMILES per line, …) and the free `write_many`.
+
+Graph navigation & crystallography:
+
+- Walk the molecular graph from an [`Atom`]: `neighbors`, `bonds`, `bond_to`
+  (the bond joining two atoms, if any), `count_bonds_of_order`, and
+  `explicit_hydrogen_count`; from a [`Bond`], `other_atom` crosses to the far
+  end. `Molecule::bond_between` looks up the bond between two atom indices.
+- Crystallographic unit cells (present after reading a CIF and similar):
+  `Molecule::has_unit_cell` / `unit_cell` yield a [`UnitCell`] with `lengths`,
+  `angles`, `volume`, `space_group`, `lattice_type` (a `LatticeType`), and
+  `to_fractional` / `to_cartesian` coordinate conversions.
 
 ## Thread safety
 

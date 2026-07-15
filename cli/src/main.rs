@@ -61,6 +61,20 @@ fn main() {
         println!("Ring sizes:        [{}]", rings.join(", "));
     }
 
+    // Graph navigation (T12): describe the first heavy atom's neighbourhood.
+    if let Some(a0) = mol.atom(0) {
+        let neighbors: Vec<String> = a0
+            .neighbors()
+            .iter()
+            .map(|n| format!("#{}(Z{})", n.index(), n.atomic_number()))
+            .collect();
+        println!(
+            "Atom #0 neighbours: {} bond(s) -> [{}]",
+            a0.bonds().len(),
+            neighbors.join(", "),
+        );
+    }
+
     // 2D depiction (T6): render the skeletal structure to SVG (before adding
     // explicit H, for a cleaner drawing). A second CLI argument saves it.
     if let Some(svg) = mol.to_svg() {

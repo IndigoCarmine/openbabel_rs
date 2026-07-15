@@ -30,6 +30,7 @@ mod residue;
 mod ring;
 mod smarts;
 mod transform;
+mod unitcell;
 
 pub use atom::{Atom, AtomMut, Winding};
 pub use bond::{Bond, BondMut};
@@ -42,6 +43,7 @@ pub use residue::Residue;
 pub use ring::Ring;
 pub use smarts::SmartsPattern;
 pub use transform::Transform;
+pub use unitcell::{LatticeType, UnitCell};
 
 use std::sync::{Mutex, Once};
 

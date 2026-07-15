@@ -508,6 +508,36 @@ impl Molecule {
         (0..self.num_bonds()).map(move |i| Bond { mol, ob_idx: i })
     }
 
+    /// The bond joining the atoms at 0-based indices `a` and `b`, or `None` if
+    /// they are not directly bonded.
+    pub fn bond_between(&self, a: u32, b: u32) -> Option<Bond<'_>> {
+        let idx = with_ob(|| ffi::mol_bond_between(self.as_inner(), a, b));
+        if idx < 0 {
+            None
+        } else {
+            Some(Bond {
+                mol: self.as_inner(),
+                ob_idx: idx as u32,
+            })
+        }
+    }
+
+    /// Whether this molecule carries crystallographic unit-cell information
+    /// (present after reading a crystal format such as CIF).
+    pub fn has_unit_cell(&self) -> bool {
+        with_ob(|| ffi::mol_has_unit_cell(self.as_inner()))
+    }
+
+    /// The crystallographic [`UnitCell`](crate::UnitCell), or `None` if this
+    /// molecule has none.
+    pub fn unit_cell(&self) -> Option<crate::UnitCell<'_>> {
+        if self.has_unit_cell() {
+            Some(crate::unitcell::UnitCell::new(self.as_inner()))
+        } else {
+            None
+        }
+    }
+
     /// Number of residues. `0` for molecules without biopolymer/PDB structure
     /// (e.g. anything parsed from SMILES).
     pub fn num_residues(&self) -> u32 {
