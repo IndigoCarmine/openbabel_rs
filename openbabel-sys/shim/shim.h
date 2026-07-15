@@ -106,4 +106,24 @@ double tanimoto(rust::Slice<const uint32_t> a, rust::Slice<const uint32_t> b);
 // on `mol`. `ok` is set to false for an unknown id.
 double descriptor(const Molecule &mol, rust::Str id, bool &ok);
 
+// --- Force fields ---------------------------------------------------------
+// Single-point energy of `mol` under force field `ff_id` ("MMFF94", "UFF",
+// "GAFF", "Ghemical", ...). NaN with ok=false if the field is unknown or setup
+// fails. Meaningful only when `mol` has 3D coordinates.
+double mol_energy(const Molecule &mol, rust::Str ff_id, bool &ok);
+// The energy unit reported by force field `ff_id` (e.g. "kcal/mol"); empty for
+// an unknown field.
+rust::String forcefield_unit(rust::Str ff_id);
+// Minimize `mol`'s geometry in place: `steps` conjugate-gradient steps under
+// `ff_id`. Returns the final energy (NaN with ok=false on failure).
+double mol_optimize(Molecule &mol, rust::Str ff_id, uint32_t steps, bool &ok);
+
+// --- 3D structure generation ----------------------------------------------
+// Generate 3D coordinates in place, like `obabel --gen3d`. `speed` is one of
+// "fastest"/"fast"/"med"/"slow"/"best" (or a digit "1".."5"). Returns false on
+// failure.
+bool mol_make_3d(Molecule &mol, rust::Str speed);
+// Coordinate dimension of `mol`: 0 (none), 2, or 3.
+uint32_t mol_dimension(const Molecule &mol);
+
 }  // namespace ob_shim

@@ -131,6 +131,51 @@ impl Molecule {
         self.descriptor("MR")
     }
 
+    /// Coordinate dimension: `0` (no coordinates), `2`, or `3`.
+    pub fn dimension(&self) -> u32 {
+        with_ob(|| ffi::mol_dimension(self.as_inner()))
+    }
+
+    /// Whether the molecule has 3D coordinates.
+    pub fn has_3d(&self) -> bool {
+        self.dimension() == 3
+    }
+
+    /// Single-point energy of the molecule under the named force field
+    /// (`"MMFF94"`, `"MMFF94s"`, `"UFF"`, `"GAFF"`, `"Ghemical"`).
+    ///
+    /// Returns `None` if the force field is unknown or cannot be set up.
+    /// Only meaningful once the molecule has 3D coordinates (see
+    /// [`generate_3d`](Self::generate_3d)). The unit is the force field's own
+    /// (see [`forcefield_energy_unit`](crate::forcefield_energy_unit)).
+    pub fn energy(&self, forcefield: &str) -> Option<f64> {
+        let mut ok = true;
+        let e = with_ob(|| ffi::mol_energy(self.as_inner(), forcefield, &mut ok));
+        if ok { Some(e) } else { None }
+    }
+
+    /// Energy-minimize the geometry in place using `steps` conjugate-gradient
+    /// steps of the named force field. Returns the final energy, or `None` if
+    /// the force field is unknown or setup fails.
+    pub fn optimize_geometry(&mut self, forcefield: &str, steps: u32) -> Option<f64> {
+        let mut ok = true;
+        let e = with_ob(|| ffi::mol_optimize(self.inner.pin_mut(), forcefield, steps, &mut ok));
+        if ok { Some(e) } else { None }
+    }
+
+    /// Generate 3D coordinates in place (like `obabel --gen3d`, "medium"
+    /// quality: build from fragment templates, then force-field cleanup).
+    /// Returns `false` if generation failed.
+    pub fn generate_3d(&mut self) -> bool {
+        with_ob(|| ffi::mol_make_3d(self.inner.pin_mut(), "med"))
+    }
+
+    /// Generate 3D coordinates with an explicit quality/speed setting, one of
+    /// `"fastest"`, `"fast"`, `"med"`, `"slow"`, `"best"`.
+    pub fn generate_3d_with(&mut self, speed: &str) -> bool {
+        with_ob(|| ffi::mol_make_3d(self.inner.pin_mut(), speed))
+    }
+
     /// The atom at 0-based `index`, or `None` if out of range.
     pub fn atom(&self, index: u32) -> Option<Atom<'_>> {
         if index < self.num_atoms() {

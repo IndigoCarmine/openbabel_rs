@@ -35,6 +35,17 @@ Analysis:
 - Numeric descriptors (`Molecule::descriptor`, plus `logp` / `tpsa` /
   `molar_refractivity`).
 
+3D structures & force fields:
+
+- 3D coordinate generation (`Molecule::generate_3d` / `generate_3d_with`,
+  `dimension`, `has_3d`).
+- Force-field single-point energy and geometry optimization
+  (`Molecule::energy` / `optimize_geometry`) with `MMFF94`, `MMFF94s`, `UFF`,
+  `GAFF`, `Ghemical`; unit via `forcefield_energy_unit`.
+
+> Distance-geometry 3D generation (`--gen3d dg`) needs Eigen, which this build
+> disables; the default fragment-builder path used by `generate_3d` does not.
+
 ## Thread safety
 
 OpenBabel is not thread-safe — it keeps global mutable state (shared plugin

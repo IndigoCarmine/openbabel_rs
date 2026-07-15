@@ -91,6 +91,22 @@ pub mod ffi {
         /// Numeric descriptor `id` ("logP"/"TPSA"/"MR"/"MW"/...) of `mol`;
         /// sets `ok` to false for an unknown id.
         fn descriptor(mol: &Molecule, id: &str, ok: &mut bool) -> f64;
+
+        // Force fields.
+        /// Single-point energy under force field `ff_id`; sets `ok` to false on
+        /// unknown field or setup failure.
+        fn mol_energy(mol: &Molecule, ff_id: &str, ok: &mut bool) -> f64;
+        /// Energy unit of `ff_id` (e.g. "kcal/mol"); empty if unknown.
+        fn forcefield_unit(ff_id: &str) -> String;
+        /// Minimize `mol` in place (`steps` conjugate-gradient steps); returns
+        /// final energy, sets `ok` to false on failure.
+        fn mol_optimize(mol: Pin<&mut Molecule>, ff_id: &str, steps: u32, ok: &mut bool) -> f64;
+
+        // 3D generation.
+        /// Generate 3D coordinates in place; `speed` ∈ {fastest,fast,med,slow,best}.
+        fn mol_make_3d(mol: Pin<&mut Molecule>, speed: &str) -> bool;
+        /// Coordinate dimension: 0, 2, or 3.
+        fn mol_dimension(mol: &Molecule) -> u32;
     }
 }
 

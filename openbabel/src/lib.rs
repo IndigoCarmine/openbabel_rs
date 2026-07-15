@@ -78,6 +78,17 @@ pub fn version() -> String {
     openbabel_sys::ffi::release_version()
 }
 
+/// The energy unit reported by a force field (e.g. `"kcal/mol"`), or `None` if
+/// OpenBabel has no such force field.
+pub fn forcefield_energy_unit(forcefield: &str) -> Option<String> {
+    let unit = with_ob(|| openbabel_sys::ffi::forcefield_unit(forcefield));
+    if unit.is_empty() {
+        None
+    } else {
+        Some(unit)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

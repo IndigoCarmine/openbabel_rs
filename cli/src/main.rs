@@ -50,6 +50,17 @@ fn main() {
         Err(e) => eprintln!("canonical SMILES failed: {e}"),
     }
 
+    // Generate a 3D structure and report a force-field energy (T3).
+    if mol.generate_3d() {
+        let unit = openbabel::forcefield_energy_unit("MMFF94").unwrap_or_default();
+        if let Some(e) = mol.energy("MMFF94") {
+            println!("MMFF94 energy:     {e:.3} {unit}");
+        }
+        if let Some(e) = mol.optimize_geometry("MMFF94", 500) {
+            println!("  after optimize:  {e:.3} {unit}");
+        }
+    }
+
     println!("\nAtoms:");
     for atom in mol.atoms() {
         let (x, y, z) = atom.coords();

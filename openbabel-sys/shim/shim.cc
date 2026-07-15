@@ -4,9 +4,12 @@
 #include <openbabel/bond.h>
 #include <openbabel/descriptor.h>
 #include <openbabel/fingerprint.h>
+#include <openbabel/forcefield.h>
 #include <openbabel/obconversion.h>
+#include <openbabel/op.h>
 #include <openbabel/plugin.h>
 
+#include <cmath>
 #include <cstdlib>
 #include <sstream>
 #include <string>
@@ -276,5 +279,75 @@ double descriptor(const Molecule &mol, rust::Str id, bool &ok) {
     return 0.0;
   }
 }
+
+// --- Force fields --------------------------------------------------------
+
+namespace {
+// Look up a force field plugin by id via the DLL-exported plugin registry.
+OpenBabel::OBForceField *find_forcefield(const std::string &id) {
+  return dynamic_cast<OpenBabel::OBForceField *>(
+      OpenBabel::OBPlugin::GetPlugin("forcefields", id.c_str()));
+}
+}  // namespace
+
+double mol_energy(const Molecule &mol, rust::Str ff_id, bool &ok) {
+  try {
+    OpenBabel::OBForceField *ff = find_forcefield(to_std(ff_id));
+    if (!ff) {
+      ok = false;
+      return std::nan("");
+    }
+    if (!ff->Setup(const_cast<Molecule &>(mol).mol)) {
+      ok = false;
+      return std::nan("");
+    }
+    ok = true;
+    return ff->Energy(false);
+  } catch (...) {
+    ok = false;
+    return std::nan("");
+  }
+}
+
+rust::String forcefield_unit(rust::Str ff_id) {
+  try {
+    OpenBabel::OBForceField *ff = find_forcefield(to_std(ff_id));
+    return ff ? rust::String(ff->GetUnit()) : rust::String();
+  } catch (...) {
+    return rust::String();
+  }
+}
+
+double mol_optimize(Molecule &mol, rust::Str ff_id, uint32_t steps, bool &ok) {
+  try {
+    OpenBabel::OBForceField *ff = find_forcefield(to_std(ff_id));
+    if (!ff || !ff->Setup(mol.mol)) {
+      ok = false;
+      return std::nan("");
+    }
+    ff->ConjugateGradients(static_cast<int>(steps));
+    ff->GetCoordinates(mol.mol);
+    ok = true;
+    return ff->Energy(false);
+  } catch (...) {
+    ok = false;
+    return std::nan("");
+  }
+}
+
+// --- 3D structure generation ---------------------------------------------
+
+bool mol_make_3d(Molecule &mol, rust::Str speed) {
+  try {
+    OpenBabel::OBOp *op = dynamic_cast<OpenBabel::OBOp *>(
+        OpenBabel::OBPlugin::GetPlugin("ops", "gen3d"));
+    if (!op) return false;
+    return op->Do(&mol.mol, to_std(speed).c_str(), nullptr, nullptr);
+  } catch (...) {
+    return false;
+  }
+}
+
+uint32_t mol_dimension(const Molecule &mol) { return mol.mol.GetDimension(); }
 
 }  // namespace ob_shim
