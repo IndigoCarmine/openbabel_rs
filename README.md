@@ -71,6 +71,27 @@ Structure alignment:
   `SvgOptions`); 2D coordinates are laid out automatically. Also
   `Molecule::generate_2d` / `has_2d`. The SVG painter is built in (no Cairo).
 
+Stereochemistry:
+
+- Perceive and query stereocenters: `Molecule::tetrahedral_stereo_count` /
+  `cistrans_stereo_count` / `perceive_stereo`, `Atom::is_tetrahedral_stereo` /
+  `stereo_winding` (a [`Winding`], clockwise/anticlockwise — OpenBabel's
+  descriptor, not a CIP `R`/`S` label), `Bond::is_cistrans_stereo`.
+
+Reaction / SMIRKS-like transforms:
+
+- `Transform::new(reactant_smarts, product_smarts)` compiles a SMARTS→SMARTS
+  edit (OpenBabel's `OBChemTsfm`); `Transform::apply(&mut mol)` rewrites every
+  match in place. Handles formal-charge and bond-order changes and atom
+  deletion (e.g. protonate/deprotonate groups).
+
+Conformer search:
+
+- `Molecule::generate_conformers(count)` runs a genetic-algorithm conformer
+  search (needs a 3D structure), with `num_conformers` / `set_conformer` to
+  walk the results and `energy` to score each. Uses the Eigen support enabled
+  above.
+
 ## Thread safety
 
 OpenBabel is not thread-safe — it keeps global mutable state (shared plugin

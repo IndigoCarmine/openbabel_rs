@@ -20,6 +20,14 @@ pub enum Error {
         /// The offending pattern.
         pattern: String,
     },
+    /// A reaction transform failed to compile (reactant or product SMARTS was
+    /// malformed).
+    InvalidTransform {
+        /// The reactant SMARTS.
+        reactant: String,
+        /// The product SMARTS.
+        product: String,
+    },
 }
 
 impl fmt::Display for Error {
@@ -33,6 +41,9 @@ impl fmt::Display for Error {
             }
             Error::InvalidSmarts { pattern } => {
                 write!(f, "invalid SMARTS pattern {pattern:?}")
+            }
+            Error::InvalidTransform { reactant, product } => {
+                write!(f, "invalid transform {reactant:?} >> {product:?}")
             }
         }
     }

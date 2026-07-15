@@ -2,6 +2,16 @@
 
 use openbabel_sys::ffi;
 
+/// The winding of a tetrahedral stereocenter: the sense (clockwise or
+/// anticlockwise) in which its neighbours are arranged when viewed from a
+/// reference direction. This is OpenBabel's internal descriptor, not a CIP
+/// `R`/`S` label.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Winding {
+    Clockwise,
+    AntiClockwise,
+}
+
 /// A single atom, borrowed from its parent molecule.
 ///
 /// An `Atom` is a lightweight handle (a reference to the molecule plus an
@@ -88,6 +98,21 @@ impl<'mol> Atom<'mol> {
     /// Whether this atom can accept a hydrogen bond.
     pub fn is_hbond_acceptor(&self) -> bool {
         crate::with_ob(|| ffi::atom_is_hbond_acceptor(self.mol, self.ob_idx))
+    }
+
+    /// Whether this atom is a tetrahedral stereocenter.
+    pub fn is_tetrahedral_stereo(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_tetrahedral_stereo(self.mol, self.ob_idx))
+    }
+
+    /// The [`Winding`] of this atom's tetrahedral stereocenter, or `None` if it
+    /// is not a specified stereocenter.
+    pub fn stereo_winding(&self) -> Option<Winding> {
+        match crate::with_ob(|| ffi::atom_tetrahedral_winding(self.mol, self.ob_idx)) {
+            1 => Some(Winding::Clockwise),
+            2 => Some(Winding::AntiClockwise),
+            _ => None,
+        }
     }
 }
 

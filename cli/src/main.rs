@@ -43,6 +43,13 @@ fn main() {
         println!("Hydroxyl groups:   {}", oh.num_matches(&mol));
     }
 
+    // Stereochemistry (T7): perceived stereocenters.
+    println!(
+        "Stereocenters:     {} tetrahedral, {} cis/trans",
+        mol.tetrahedral_stereo_count(),
+        mol.cistrans_stereo_count(),
+    );
+
     // 2D depiction (T6): render the skeletal structure to SVG (before adding
     // explicit H, for a cleaner drawing). A second CLI argument saves it.
     if let Some(svg) = mol.to_svg() {
@@ -91,6 +98,9 @@ fn main() {
                 println!("Self-align RMSD:   {rmsd:.4}");
             }
         }
+
+        // Conformer search (T7): count diverse low-energy conformers.
+        println!("Conformers:        {}", mol.generate_conformers(10));
     }
 
     // Assign partial atomic charges so the per-atom listing can show them (T4).

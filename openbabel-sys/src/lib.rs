@@ -23,6 +23,9 @@ pub mod ffi {
         /// Opaque owner of a compiled OpenBabel `OBSmartsPattern`.
         type Smarts;
 
+        /// Opaque owner of a compiled `OBChemTsfm` (SMARTS→SMARTS transform).
+        type Transform;
+
         /// OpenBabel release version, e.g. `"3.2.1"`.
         fn release_version() -> String;
 
@@ -145,6 +148,36 @@ pub mod ffi {
             atom_indices: bool,
             ok: &mut bool,
         ) -> String;
+
+        // Stereochemistry.
+        /// Force (re)perception of stereochemistry from structure.
+        fn mol_perceive_stereo(mol: Pin<&mut Molecule>);
+        /// Counts of perceived tetrahedral / cis-trans stereo units.
+        fn mol_num_tetrahedral_stereo(mol: &Molecule) -> u32;
+        fn mol_num_cistrans_stereo(mol: &Molecule) -> u32;
+        /// Whether atom `idx` (1-based) is a tetrahedral stereocenter.
+        fn atom_is_tetrahedral_stereo(mol: &Molecule, idx: u32) -> bool;
+        /// Winding at atom `idx`: 1 = clockwise, 2 = anticlockwise, 0 = none.
+        fn atom_tetrahedral_winding(mol: &Molecule, idx: u32) -> i32;
+        /// Whether bond `idx` (0-based) is a cis/trans stereo unit.
+        fn bond_is_cistrans_stereo(mol: &Molecule, idx: u32) -> bool;
+
+        // Reaction / SMIRKS-like transforms.
+        /// Compile a reactant→product SMARTS transform; null if either is invalid.
+        fn transform_new(reactant: &str, product: &str) -> UniquePtr<Transform>;
+        /// Apply the transform to every match in `mol`, editing it in place;
+        /// false if nothing matched or it failed.
+        fn transform_apply(t: &Transform, mol: Pin<&mut Molecule>) -> bool;
+
+        // Conformer search.
+        /// Genetic-algorithm conformer search targeting `count` conformers,
+        /// stored in `mol` (which must already have a 3D structure). Returns the
+        /// number of conformers now stored.
+        fn mol_generate_conformers(mol: Pin<&mut Molecule>, count: u32) -> u32;
+        /// Number of stored conformers.
+        fn mol_num_conformers(mol: &Molecule) -> u32;
+        /// Make conformer `index` the active coordinates (no-op if out of range).
+        fn mol_set_conformer(mol: Pin<&mut Molecule>, index: u32);
     }
 }
 

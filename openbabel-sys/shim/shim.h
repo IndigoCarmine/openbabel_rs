@@ -15,6 +15,7 @@
 
 #include <openbabel/mol.h>
 #include <openbabel/parsmart.h>
+#include <openbabel/phmodel.h>
 
 #include "rust/cxx.h"
 
@@ -31,6 +32,12 @@ struct Molecule {
 // the complete type.
 struct Smarts {
   OpenBabel::OBSmartsPattern pat;
+};
+
+// Opaque (to Rust) wrapper owning a compiled SMARTS→SMARTS transformation
+// (OBChemTsfm), applied to a molecule to edit it in place (SMIRKS-like).
+struct Transform {
+  OpenBabel::OBChemTsfm tsfm;
 };
 
 // OpenBabel release version string, e.g. "3.2.1".
@@ -158,5 +165,38 @@ bool mol_make_2d(Molecule &mol);
 // `ok` is false on failure (the returned string is then empty).
 rust::String mol_to_svg(const Molecule &mol, bool all_carbons, bool atom_indices,
                         bool &ok);
+
+// --- Stereochemistry ------------------------------------------------------
+// Force (re)perception of stereochemistry from the molecule's structure
+// (SMILES @/@@ and /\, or 2D/3D coordinates).
+void mol_perceive_stereo(Molecule &mol);
+// Count of tetrahedral / cis-trans stereo units perceived in `mol`.
+uint32_t mol_num_tetrahedral_stereo(const Molecule &mol);
+uint32_t mol_num_cistrans_stereo(const Molecule &mol);
+// Whether atom `idx` (1-based) is a tetrahedral stereocenter.
+bool atom_is_tetrahedral_stereo(const Molecule &mol, uint32_t idx);
+// Winding at tetrahedral stereocenter `idx`: 1 = clockwise, 2 = anticlockwise,
+// 0 = not a (specified) stereocenter.
+int atom_tetrahedral_winding(const Molecule &mol, uint32_t idx);
+// Whether bond `idx` (0-based) is a cis/trans (double-bond) stereo unit.
+bool bond_is_cistrans_stereo(const Molecule &mol, uint32_t idx);
+
+// --- Reaction / SMIRKS-like transforms (OBChemTsfm) -----------------------
+// Compile a transformation from a reactant SMARTS to a product SMARTS. Returns
+// null if either pattern is invalid.
+std::unique_ptr<Transform> transform_new(rust::Str reactant, rust::Str product);
+// Apply the transformation to every match in `mol`, editing it in place.
+// Returns false if nothing matched or the transform failed.
+bool transform_apply(const Transform &t, Molecule &mol);
+
+// --- Conformer search (OBConformerSearch) ---------------------------------
+// Run a genetic-algorithm conformer search targeting `count` diverse
+// conformers, storing them in `mol`. Requires `mol` to already have a 3D
+// structure. Returns the number of conformers now stored.
+uint32_t mol_generate_conformers(Molecule &mol, uint32_t count);
+// Number of stored conformers.
+uint32_t mol_num_conformers(const Molecule &mol);
+// Make conformer `index` the active coordinates (no-op if out of range).
+void mol_set_conformer(Molecule &mol, uint32_t index);
 
 }  // namespace ob_shim

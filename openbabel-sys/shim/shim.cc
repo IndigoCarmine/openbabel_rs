@@ -5,11 +5,15 @@
 #include <openbabel/chargemodel.h>
 #include <openbabel/descriptor.h>
 #include <openbabel/fingerprint.h>
+#include <openbabel/conformersearch.h>
 #include <openbabel/forcefield.h>
 #include <openbabel/math/align.h>
 #include <openbabel/obconversion.h>
 #include <openbabel/op.h>
 #include <openbabel/plugin.h>
+#include <openbabel/stereo/cistrans.h>
+#include <openbabel/stereo/stereo.h>
+#include <openbabel/stereo/tetrahedral.h>
 
 #include <cmath>
 #include <cstdlib>
@@ -450,6 +454,138 @@ rust::String mol_to_svg(const Molecule &mol, bool all_carbons, bool atom_indices
   } catch (...) {
     ok = false;
     return rust::String();
+  }
+}
+
+// --- Stereochemistry -----------------------------------------------------
+
+void mol_perceive_stereo(Molecule &mol) {
+  try {
+    OpenBabel::PerceiveStereo(&mol.mol, true);
+  } catch (...) {
+  }
+}
+
+uint32_t mol_num_tetrahedral_stereo(const Molecule &mol) {
+  try {
+    OpenBabel::OBMol &m = const_cast<OpenBabel::OBMol &>(mol.mol);
+    OpenBabel::OBStereoFacade facade(&m);
+    uint32_t n = 0;
+    for (uint32_t i = 1; i <= m.NumAtoms(); ++i) {
+      OpenBabel::OBAtom *a = m.GetAtom(static_cast<int>(i));
+      if (a && facade.HasTetrahedralStereo(a->GetId())) ++n;
+    }
+    return n;
+  } catch (...) {
+    return 0;
+  }
+}
+
+uint32_t mol_num_cistrans_stereo(const Molecule &mol) {
+  try {
+    OpenBabel::OBMol &m = const_cast<OpenBabel::OBMol &>(mol.mol);
+    OpenBabel::OBStereoFacade facade(&m);
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < m.NumBonds(); ++i) {
+      OpenBabel::OBBond *b = m.GetBond(static_cast<int>(i));
+      if (b && facade.HasCisTransStereo(b->GetId())) ++n;
+    }
+    return n;
+  } catch (...) {
+    return 0;
+  }
+}
+
+bool atom_is_tetrahedral_stereo(const Molecule &mol, uint32_t idx) {
+  try {
+    OpenBabel::OBMol &m = const_cast<OpenBabel::OBMol &>(mol.mol);
+    OpenBabel::OBAtom *a = m.GetAtom(static_cast<int>(idx));
+    if (!a) return false;
+    OpenBabel::OBStereoFacade facade(&m);
+    return facade.HasTetrahedralStereo(a->GetId());
+  } catch (...) {
+    return false;
+  }
+}
+
+int atom_tetrahedral_winding(const Molecule &mol, uint32_t idx) {
+  try {
+    OpenBabel::OBMol &m = const_cast<OpenBabel::OBMol &>(mol.mol);
+    OpenBabel::OBAtom *a = m.GetAtom(static_cast<int>(idx));
+    if (!a) return 0;
+    OpenBabel::OBStereoFacade facade(&m);
+    if (!facade.HasTetrahedralStereo(a->GetId())) return 0;
+    OpenBabel::OBTetrahedralStereo *ts = facade.GetTetrahedralStereo(a->GetId());
+    if (!ts) return 0;
+    OpenBabel::OBTetrahedralStereo::Config cfg = ts->GetConfig();
+    if (!cfg.specified) return 0;
+    return static_cast<int>(cfg.winding);  // 1 = clockwise, 2 = anticlockwise
+  } catch (...) {
+    return 0;
+  }
+}
+
+bool bond_is_cistrans_stereo(const Molecule &mol, uint32_t idx) {
+  try {
+    OpenBabel::OBMol &m = const_cast<OpenBabel::OBMol &>(mol.mol);
+    OpenBabel::OBBond *b = m.GetBond(static_cast<int>(idx));
+    if (!b) return false;
+    OpenBabel::OBStereoFacade facade(&m);
+    return facade.HasCisTransStereo(b->GetId());
+  } catch (...) {
+    return false;
+  }
+}
+
+// --- Reaction / SMIRKS-like transforms -----------------------------------
+
+std::unique_ptr<Transform> transform_new(rust::Str reactant, rust::Str product) {
+  try {
+    auto t = std::unique_ptr<Transform>(new Transform());
+    std::string start = to_std(reactant);
+    std::string end = to_std(product);
+    if (!t->tsfm.Init(start, end)) return nullptr;
+    return t;
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+bool transform_apply(const Transform &t, Molecule &mol) {
+  try {
+    return const_cast<Transform &>(t).tsfm.Apply(mol.mol);
+  } catch (...) {
+    return false;
+  }
+}
+
+// --- Conformer search ----------------------------------------------------
+
+uint32_t mol_generate_conformers(Molecule &mol, uint32_t count) {
+  try {
+    OpenBabel::OBConformerSearch cs;
+    if (!cs.Setup(mol.mol, static_cast<int>(count))) {
+      // No rotatable bonds (or setup failed): the existing structure is the
+      // only conformer.
+      return mol.mol.NumConformers();
+    }
+    cs.Search();
+    cs.GetConformers(mol.mol);
+    return mol.mol.NumConformers();
+  } catch (...) {
+    return 0;
+  }
+}
+
+uint32_t mol_num_conformers(const Molecule &mol) {
+  return static_cast<uint32_t>(const_cast<Molecule &>(mol).mol.NumConformers());
+}
+
+void mol_set_conformer(Molecule &mol, uint32_t index) {
+  try {
+    if (index < static_cast<uint32_t>(mol.mol.NumConformers()))
+      mol.mol.SetConformer(index);
+  } catch (...) {
   }
 }
 

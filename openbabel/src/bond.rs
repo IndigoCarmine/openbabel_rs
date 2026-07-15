@@ -42,6 +42,11 @@ impl<'mol> Bond<'mol> {
     pub fn is_in_ring(&self) -> bool {
         crate::with_ob(|| ffi::bond_is_in_ring(self.mol, self.ob_idx))
     }
+
+    /// Whether this bond carries cis/trans (double-bond) stereochemistry.
+    pub fn is_cistrans_stereo(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_cistrans_stereo(self.mol, self.ob_idx))
+    }
 }
 
 impl std::fmt::Debug for Bond<'_> {

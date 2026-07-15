@@ -18,13 +18,15 @@ mod error;
 mod fingerprint;
 mod mol;
 mod smarts;
+mod transform;
 
-pub use atom::Atom;
+pub use atom::{Atom, Winding};
 pub use bond::Bond;
 pub use error::Error;
 pub use fingerprint::Fingerprint;
 pub use mol::{Molecule, SvgOptions};
 pub use smarts::SmartsPattern;
+pub use transform::Transform;
 
 use std::sync::{Mutex, Once};
 

@@ -293,6 +293,47 @@ impl Molecule {
         }
     }
 
+    /// Force (re)perception of stereochemistry from the molecule's structure
+    /// (SMILES `@`/`@@` and `/\`, or 2D/3D coordinates).
+    ///
+    /// Stereo is perceived on demand by the query methods too; call this only
+    /// to re-perceive after changing the structure.
+    pub fn perceive_stereo(&mut self) {
+        with_ob(|| ffi::mol_perceive_stereo(self.inner.pin_mut()));
+    }
+
+    /// Number of tetrahedral stereocenters perceived in the molecule.
+    pub fn tetrahedral_stereo_count(&self) -> u32 {
+        with_ob(|| ffi::mol_num_tetrahedral_stereo(self.as_inner()))
+    }
+
+    /// Number of cis/trans (double-bond) stereo units perceived.
+    pub fn cistrans_stereo_count(&self) -> u32 {
+        with_ob(|| ffi::mol_num_cistrans_stereo(self.as_inner()))
+    }
+
+    /// Run a genetic-algorithm conformer search targeting `count` diverse
+    /// conformers, storing them in this molecule; returns the number now
+    /// stored (see [`num_conformers`](Self::num_conformers)).
+    ///
+    /// The molecule must already have a 3D structure (call
+    /// [`generate_3d`](Self::generate_3d) first). A rigid molecule with no
+    /// rotatable bonds yields a single conformer.
+    pub fn generate_conformers(&mut self, count: u32) -> u32 {
+        with_ob(|| ffi::mol_generate_conformers(self.inner.pin_mut(), count))
+    }
+
+    /// Number of stored conformers (at least 1 once coordinates exist).
+    pub fn num_conformers(&self) -> u32 {
+        with_ob(|| ffi::mol_num_conformers(self.as_inner()))
+    }
+
+    /// Make conformer `index` the active coordinates. Out-of-range indices are
+    /// ignored. Combine with [`energy`](Self::energy) to score each conformer.
+    pub fn set_conformer(&mut self, index: u32) {
+        with_ob(|| ffi::mol_set_conformer(self.inner.pin_mut(), index));
+    }
+
     /// The atom at 0-based `index`, or `None` if out of range.
     pub fn atom(&self, index: u32) -> Option<Atom<'_>> {
         if index < self.num_atoms() {
@@ -331,6 +372,10 @@ impl Molecule {
 
     pub(crate) fn as_inner(&self) -> &ffi::Molecule {
         self.inner.as_ref().expect("Molecule is never null")
+    }
+
+    pub(crate) fn as_inner_pin_mut(&mut self) -> std::pin::Pin<&mut ffi::Molecule> {
+        self.inner.pin_mut()
     }
 }
 
