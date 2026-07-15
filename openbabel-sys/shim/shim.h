@@ -18,6 +18,7 @@
 #include <openbabel/mol.h>
 #include <openbabel/parsmart.h>
 #include <openbabel/phmodel.h>
+#include <openbabel/reaction.h>
 
 #include "rust/cxx.h"
 
@@ -48,6 +49,13 @@ struct Transform {
 // UniquePtr glue.
 struct Constraints {
   OpenBabel::OBFFConstraints c;
+};
+
+// Opaque (to Rust) wrapper owning a chemical reaction (OBReaction): lists of
+// reactant / product / agent molecules plus title/comment/reversible flags.
+// Complete type (not forward-declared) for the UniquePtr glue.
+struct Reaction {
+  OpenBabel::OBReaction rxn;
 };
 
 // OpenBabel release version string, e.g. "3.2.1".
@@ -440,5 +448,29 @@ rust::Vec<double> mol_cell_to_cartesian(const Molecule &mol, double x, double y,
 rust::Vec<uint32_t> mol_symmetry_classes(const Molecule &mol);
 // Canonical rank (1-based) per atom — a repeatable canonical labelling.
 rust::Vec<uint32_t> mol_canonical_ranks(const Molecule &mol);
+
+// --- Reactions (OBReaction; formats "rxn" MDL RXN, "rsmi" reaction SMILES) --
+std::unique_ptr<Reaction> reaction_new();
+// Parse a reaction document; null on unknown format or parse failure.
+std::unique_ptr<Reaction> reaction_read(rust::Str format, rust::Str data);
+// Serialize; sets ok=false (and returns empty) on unknown format / failure.
+rust::String reaction_write(const Reaction &r, rust::Str format, bool &ok);
+uint32_t reaction_num_reactants(const Reaction &r);
+uint32_t reaction_num_products(const Reaction &r);
+uint32_t reaction_num_agents(const Reaction &r);
+// Deep copy of the i-th component as a standalone Molecule; null if out of range.
+std::unique_ptr<Molecule> reaction_reactant(const Reaction &r, uint32_t i);
+std::unique_ptr<Molecule> reaction_product(const Reaction &r, uint32_t i);
+std::unique_ptr<Molecule> reaction_agent(const Reaction &r, uint32_t i);
+// Append a deep copy of mol to the respective component list.
+void reaction_add_reactant(Reaction &r, const Molecule &mol);
+void reaction_add_product(Reaction &r, const Molecule &mol);
+void reaction_add_agent(Reaction &r, const Molecule &mol);
+rust::String reaction_title(const Reaction &r);
+void reaction_set_title(Reaction &r, rust::Str title);
+rust::String reaction_comment(const Reaction &r);
+void reaction_set_comment(Reaction &r, rust::Str comment);
+bool reaction_is_reversible(const Reaction &r);
+void reaction_set_reversible(Reaction &r, bool value);
 
 }  // namespace ob_shim

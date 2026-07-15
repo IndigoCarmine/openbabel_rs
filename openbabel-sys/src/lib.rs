@@ -30,6 +30,9 @@ pub mod ffi {
         /// angle / torsion restraints, ignored atoms).
         type Constraints;
 
+        /// Opaque owner of an `OBReaction` (reactant / product / agent lists).
+        type Reaction;
+
         /// OpenBabel release version, e.g. `"3.2.1"`.
         fn release_version() -> String;
 
@@ -397,6 +400,26 @@ pub mod ffi {
         // Symmetry & canonical ordering (one value per atom, atom order).
         fn mol_symmetry_classes(mol: &Molecule) -> Vec<u32>;
         fn mol_canonical_ranks(mol: &Molecule) -> Vec<u32>;
+
+        // Reactions (formats "rxn" = MDL RXN, "rsmi" = reaction SMILES).
+        fn reaction_new() -> UniquePtr<Reaction>;
+        fn reaction_read(format: &str, data: &str) -> UniquePtr<Reaction>;
+        fn reaction_write(r: &Reaction, format: &str, ok: &mut bool) -> String;
+        fn reaction_num_reactants(r: &Reaction) -> u32;
+        fn reaction_num_products(r: &Reaction) -> u32;
+        fn reaction_num_agents(r: &Reaction) -> u32;
+        fn reaction_reactant(r: &Reaction, i: u32) -> UniquePtr<Molecule>;
+        fn reaction_product(r: &Reaction, i: u32) -> UniquePtr<Molecule>;
+        fn reaction_agent(r: &Reaction, i: u32) -> UniquePtr<Molecule>;
+        fn reaction_add_reactant(r: Pin<&mut Reaction>, mol: &Molecule);
+        fn reaction_add_product(r: Pin<&mut Reaction>, mol: &Molecule);
+        fn reaction_add_agent(r: Pin<&mut Reaction>, mol: &Molecule);
+        fn reaction_title(r: &Reaction) -> String;
+        fn reaction_set_title(r: Pin<&mut Reaction>, title: &str);
+        fn reaction_comment(r: &Reaction) -> String;
+        fn reaction_set_comment(r: Pin<&mut Reaction>, comment: &str);
+        fn reaction_is_reversible(r: &Reaction) -> bool;
+        fn reaction_set_reversible(r: Pin<&mut Reaction>, value: bool);
     }
 }
 

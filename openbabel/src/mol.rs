@@ -745,6 +745,13 @@ impl Molecule {
         with_ob(|| ffi::mol_vibration_intensities(self.as_inner()))
     }
 
+    /// Wrap a non-null `ffi::Molecule` owner. Callers must have checked the
+    /// pointer is non-null (e.g. an out-of-range accessor returns null).
+    pub(crate) fn from_inner(inner: UniquePtr<ffi::Molecule>) -> Self {
+        debug_assert!(!inner.is_null(), "from_inner requires a non-null molecule");
+        Molecule { inner }
+    }
+
     pub(crate) fn as_inner(&self) -> &ffi::Molecule {
         self.inner.as_ref().expect("Molecule is never null")
     }

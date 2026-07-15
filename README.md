@@ -20,7 +20,7 @@ build the reference locally with `cargo doc --workspace --no-deps --open`.
 | Crate           | Role                                                                 |
 | --------------- | ------------------------------------------------------------------- |
 | `openbabel-sys` | Low-level FFI: a `cxx` bridge + C++ shim; `build.rs` builds OpenBabel from source and links it. |
-| `openbabel`     | Safe, idiomatic API: `Molecule`, `Atom`, `Bond`, `Residue`, `Ring`, `UnitCell`, `SmartsPattern`, `Fingerprint`, `Transform`, `Minimizer` / `Constraints`, the `elements` module, `Error`. |
+| `openbabel`     | Safe, idiomatic API: `Molecule`, `Atom`, `Bond`, `Residue`, `Ring`, `UnitCell`, `Reaction`, `SmartsPattern`, `Fingerprint`, `Transform`, `Minimizer` / `Constraints`, the `elements` module, `Error`. |
 | `cli`           | `openbabel-demo` — a small SMILES-inspection demo.                   |
 
 Dependencies are vendored as git submodules: OpenBabel at `vendor/openbabel-src`
@@ -193,6 +193,15 @@ Symmetry & canonical ordering:
   (atoms sharing a value are graph-equivalent), and `canonical_ranks` a
   repeatable, input-order-independent canonical labelling — both via OpenBabel's
   `OBGraphSym` / canonical-labelling algorithm.
+
+Reactions:
+
+- [`Reaction`] models a chemical reaction as data — ordered reactant / product /
+  agent molecule lists plus title, comment, and a reversibility flag. Read and
+  write via `Reaction::parse` / `write` (`"rsmi"` reaction SMILES, `"rxn"` MDL
+  RXN), inspect with `num_reactants` / `reactant` (and the product / agent
+  equivalents), or build one up with `new` + `add_reactant` / `add_product` /
+  `add_agent`. (To *apply* a reaction as a graph edit, use [`Transform`].)
 
 ## Thread safety
 

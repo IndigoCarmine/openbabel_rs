@@ -1449,4 +1449,96 @@ rust::Vec<uint32_t> mol_canonical_ranks(const Molecule &mol) {
   return out;
 }
 
+// --- Reactions ------------------------------------------------------------
+
+std::unique_ptr<Reaction> reaction_new() {
+  return std::unique_ptr<Reaction>(new Reaction());
+}
+
+std::unique_ptr<Reaction> reaction_read(rust::Str format, rust::Str data) {
+  try {
+    OpenBabel::OBConversion conv;
+    if (!conv.SetInFormat(to_std(format).c_str())) return nullptr;
+    auto r = std::unique_ptr<Reaction>(new Reaction());
+    std::istringstream iss(to_std(data));
+    if (!conv.Read(&r->rxn, &iss)) return nullptr;
+    return r;
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+rust::String reaction_write(const Reaction &r, rust::Str format, bool &ok) {
+  try {
+    OpenBabel::OBConversion conv;
+    if (!conv.SetOutFormat(to_std(format).c_str())) {
+      ok = false;
+      return rust::String();
+    }
+    std::ostringstream oss;
+    ok = conv.Write(&const_cast<Reaction &>(r).rxn, &oss);
+    return rust::String(oss.str());
+  } catch (...) {
+    ok = false;
+    return rust::String();
+  }
+}
+
+uint32_t reaction_num_reactants(const Reaction &r) {
+  return static_cast<uint32_t>(const_cast<Reaction &>(r).rxn.NumReactants());
+}
+uint32_t reaction_num_products(const Reaction &r) {
+  return static_cast<uint32_t>(const_cast<Reaction &>(r).rxn.NumProducts());
+}
+uint32_t reaction_num_agents(const Reaction &r) {
+  return static_cast<uint32_t>(const_cast<Reaction &>(r).rxn.NumAgents());
+}
+
+// Copy a shared_ptr<OBMol> component out as a standalone Molecule.
+static std::unique_ptr<Molecule> component_copy(std::shared_ptr<OpenBabel::OBMol> sp) {
+  if (!sp) return nullptr;
+  auto m = std::unique_ptr<Molecule>(new Molecule());
+  m->mol = *sp;  // OBMol copy assignment
+  return m;
+}
+
+std::unique_ptr<Molecule> reaction_reactant(const Reaction &r, uint32_t i) {
+  return component_copy(const_cast<Reaction &>(r).rxn.GetReactant(i));
+}
+std::unique_ptr<Molecule> reaction_product(const Reaction &r, uint32_t i) {
+  return component_copy(const_cast<Reaction &>(r).rxn.GetProduct(i));
+}
+std::unique_ptr<Molecule> reaction_agent(const Reaction &r, uint32_t i) {
+  return component_copy(const_cast<Reaction &>(r).rxn.GetAgent(i));
+}
+
+void reaction_add_reactant(Reaction &r, const Molecule &mol) {
+  r.rxn.AddReactant(std::make_shared<OpenBabel::OBMol>(const_cast<Molecule &>(mol).mol));
+}
+void reaction_add_product(Reaction &r, const Molecule &mol) {
+  r.rxn.AddProduct(std::make_shared<OpenBabel::OBMol>(const_cast<Molecule &>(mol).mol));
+}
+void reaction_add_agent(Reaction &r, const Molecule &mol) {
+  r.rxn.AddAgent(std::make_shared<OpenBabel::OBMol>(const_cast<Molecule &>(mol).mol));
+}
+
+rust::String reaction_title(const Reaction &r) {
+  return rust::String(const_cast<Reaction &>(r).rxn.GetTitle());
+}
+void reaction_set_title(Reaction &r, rust::Str title) {
+  r.rxn.SetTitle(to_std(title));
+}
+rust::String reaction_comment(const Reaction &r) {
+  return rust::String(const_cast<Reaction &>(r).rxn.GetComment());
+}
+void reaction_set_comment(Reaction &r, rust::Str comment) {
+  r.rxn.SetComment(to_std(comment));
+}
+bool reaction_is_reversible(const Reaction &r) {
+  return const_cast<Reaction &>(r).rxn.IsReversible();
+}
+void reaction_set_reversible(Reaction &r, bool value) {
+  r.rxn.SetReversible(value);
+}
+
 }  // namespace ob_shim
