@@ -8,7 +8,7 @@ cheminformatics toolkit, built with [`cxx`](https://cxx.rs) over a thin C++ shim
 | Crate           | Role                                                                 |
 | --------------- | ------------------------------------------------------------------- |
 | `openbabel-sys` | Low-level FFI: a `cxx` bridge + C++ shim; `build.rs` builds OpenBabel from source and links it. |
-| `openbabel`     | Safe, idiomatic API (`Molecule`, `Atom`, `Bond`, `Error`).          |
+| `openbabel`     | Safe, idiomatic API: `Molecule`, `Atom`, `Bond`, `SmartsPattern`, `Fingerprint`, `Transform`, the `elements` module, `Error`. |
 | `cli`           | `openbabel-demo` — a small SMILES-inspection demo.                   |
 
 Dependencies are vendored as git submodules: OpenBabel at `vendor/openbabel-src`
@@ -169,5 +169,18 @@ println!("{}", mol.write("can")?.trim());          // canonical SMILES
 
 ## License
 
-Bindings © their authors. OpenBabel is GPL-2.0; code that links it inherits
-that license. See `vendor/openbabel-src/COPYING`.
+This project is licensed **GPL-2.0-only** (see [`LICENSE`](LICENSE)): it links
+OpenBabel, which is GPL-2.0-only, so the combined work inherits that license.
+
+Vendored / linked third-party components, all compatible with GPL-2.0:
+
+| Component            | License                    |
+| ------------------- | -------------------------- |
+| OpenBabel           | GPL-2.0-only               |
+| Eigen (headers used: Core/Geometry/LU/SVD) | MPL-2.0     |
+| InChI (bundled in OpenBabel) | MIT (IUPAC / InChI Trust) |
+| `cxx`               | MIT OR Apache-2.0          |
+
+Only MPL-2.0 Eigen modules are used, so no LGPL Eigen code is pulled in. Full
+license texts live in each submodule (`vendor/openbabel-src/COPYING`,
+`vendor/eigen/COPYING.*`).
