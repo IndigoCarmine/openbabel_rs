@@ -149,4 +149,14 @@ bool mol_compute_charges(Molecule &mol, rust::Str model);
 double mol_align(Molecule &mol, const Molecule &reference, bool include_h,
                  bool symmetry, bool &ok);
 
+// --- 2D depiction ---------------------------------------------------------
+// Generate 2D coordinates in place via the `gen2D` op. Returns false on failure.
+bool mol_make_2d(Molecule &mol);
+// Render `mol` to an SVG document. `all_carbons` draws a label on every carbon
+// (the default labels only terminal carbons); `atom_indices` annotates each
+// atom with its index. 2D coordinates are generated automatically if absent.
+// `ok` is false on failure (the returned string is then empty).
+rust::String mol_to_svg(const Molecule &mol, bool all_carbons, bool atom_indices,
+                        bool &ok);
+
 }  // namespace ob_shim

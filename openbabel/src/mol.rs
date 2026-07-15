@@ -8,6 +8,19 @@ use crate::bond::Bond;
 use crate::error::Error;
 use crate::with_ob;
 
+/// Rendering options for [`Molecule::to_svg_with`].
+///
+/// The default (`SvgOptions::default()`, used by [`Molecule::to_svg`]) draws a
+/// clean skeletal structure: only terminal carbons are labelled and atoms are
+/// not indexed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SvgOptions {
+    /// Draw a label on every carbon atom, not just terminal ones.
+    pub all_carbons: bool,
+    /// Annotate each atom with its index.
+    pub atom_indices: bool,
+}
+
 /// A molecule.
 ///
 /// Construct one by parsing (`Molecule::parse`) or building up from empty
@@ -205,6 +218,11 @@ impl Molecule {
         self.dimension() == 3
     }
 
+    /// Whether the molecule has 2D coordinates (e.g. for depiction).
+    pub fn has_2d(&self) -> bool {
+        self.dimension() == 2
+    }
+
     /// Single-point energy of the molecule under the named force field
     /// (`"MMFF94"`, `"MMFF94s"`, `"UFF"`, `"GAFF"`, `"Ghemical"`).
     ///
@@ -238,6 +256,41 @@ impl Molecule {
     /// `"fastest"`, `"fast"`, `"med"`, `"slow"`, `"best"`.
     pub fn generate_3d_with(&mut self, speed: &str) -> bool {
         with_ob(|| ffi::mol_make_3d(self.inner.pin_mut(), speed))
+    }
+
+    /// Generate 2D coordinates in place (like `obabel --gen2d`), laying the
+    /// molecule out for depiction. Returns `false` if generation failed.
+    ///
+    /// You don't need to call this before [`to_svg`](Self::to_svg): the SVG
+    /// renderer generates 2D coordinates itself when they're absent.
+    pub fn generate_2d(&mut self) -> bool {
+        with_ob(|| ffi::mol_make_2d(self.inner.pin_mut()))
+    }
+
+    /// Render this molecule to an SVG document with default options.
+    ///
+    /// 2D coordinates are generated automatically if the molecule has none, so
+    /// a freshly parsed molecule renders directly. Returns `None` on failure.
+    pub fn to_svg(&self) -> Option<String> {
+        self.to_svg_with(SvgOptions::default())
+    }
+
+    /// Render this molecule to an SVG document with explicit [`SvgOptions`].
+    pub fn to_svg_with(&self, options: SvgOptions) -> Option<String> {
+        let mut ok = true;
+        let svg = with_ob(|| {
+            ffi::mol_to_svg(
+                self.as_inner(),
+                options.all_carbons,
+                options.atom_indices,
+                &mut ok,
+            )
+        });
+        if ok {
+            Some(svg)
+        } else {
+            None
+        }
     }
 
     /// The atom at 0-based `index`, or `None` if out of range.

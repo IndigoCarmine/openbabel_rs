@@ -1,10 +1,11 @@
 //! Demo CLI for the `openbabel` Rust bindings.
 //!
 //! Usage:
-//!   openbabel-demo [SMILES]
+//!   openbabel-demo [SMILES] [SVG_OUTPUT_PATH]
 //!
 //! Parses the given SMILES (default: ethanol "CCO"), then prints core
 //! properties and the canonical SMILES — exercising the MVP binding surface.
+//! If a second argument is given, the 2D depiction is written there as SVG.
 
 use openbabel::{Molecule, SmartsPattern};
 
@@ -40,6 +41,21 @@ fn main() {
     // A SMARTS query (T2): count hydroxyl groups.
     if let Ok(oh) = SmartsPattern::new("[OX2H]") {
         println!("Hydroxyl groups:   {}", oh.num_matches(&mol));
+    }
+
+    // 2D depiction (T6): render the skeletal structure to SVG (before adding
+    // explicit H, for a cleaner drawing). A second CLI argument saves it.
+    if let Some(svg) = mol.to_svg() {
+        match std::env::args().nth(2) {
+            Some(path) => match std::fs::write(&path, &svg) {
+                Ok(()) => println!("Wrote SVG:         {path} ({} bytes)", svg.len()),
+                Err(e) => eprintln!("failed to write SVG to {path}: {e}"),
+            },
+            None => println!(
+                "2D depiction:      {} bytes of SVG (pass an output path to save)",
+                svg.len()
+            ),
+        }
     }
 
     mol.add_hydrogens();

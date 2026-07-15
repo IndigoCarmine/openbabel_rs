@@ -23,7 +23,7 @@ pub use atom::Atom;
 pub use bond::Bond;
 pub use error::Error;
 pub use fingerprint::Fingerprint;
-pub use mol::Molecule;
+pub use mol::{Molecule, SvgOptions};
 pub use smarts::SmartsPattern;
 
 use std::sync::{Mutex, Once};

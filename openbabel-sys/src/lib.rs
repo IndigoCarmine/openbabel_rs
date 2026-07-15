@@ -132,6 +132,19 @@ pub mod ffi {
             symmetry: bool,
             ok: &mut bool,
         ) -> f64;
+
+        // 2D depiction.
+        /// Generate 2D coordinates in place via the `gen2D` op; false on failure.
+        fn mol_make_2d(mol: Pin<&mut Molecule>) -> bool;
+        /// Render `mol` to an SVG document. `all_carbons` labels every carbon;
+        /// `atom_indices` annotates atoms with their index. 2D coordinates are
+        /// generated automatically if absent. Sets `ok` to false on failure.
+        fn mol_to_svg(
+            mol: &Molecule,
+            all_carbons: bool,
+            atom_indices: bool,
+            ok: &mut bool,
+        ) -> String;
     }
 }
 

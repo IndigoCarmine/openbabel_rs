@@ -420,4 +420,37 @@ double mol_align(Molecule &mol, const Molecule &reference, bool include_h,
   }
 }
 
+// --- 2D depiction --------------------------------------------------------
+
+bool mol_make_2d(Molecule &mol) {
+  try {
+    OpenBabel::OBOp *op = dynamic_cast<OpenBabel::OBOp *>(
+        OpenBabel::OBPlugin::GetPlugin("ops", "gen2D"));
+    if (!op) return false;
+    return op->Do(&mol.mol, "", nullptr, nullptr);
+  } catch (...) {
+    return false;
+  }
+}
+
+rust::String mol_to_svg(const Molecule &mol, bool all_carbons, bool atom_indices,
+                        bool &ok) {
+  try {
+    OpenBabel::OBConversion conv;
+    if (!conv.SetOutFormat("svg")) {
+      ok = false;
+      return rust::String();
+    }
+    // The SVG format generates 2D coordinates itself (via gen2D) when the
+    // molecule has none, so a freshly parsed molecule renders directly.
+    if (all_carbons) conv.AddOption("a", OpenBabel::OBConversion::OUTOPTIONS);
+    if (atom_indices) conv.AddOption("i", OpenBabel::OBConversion::OUTOPTIONS);
+    ok = true;
+    return rust::String(conv.WriteString(&const_cast<Molecule &>(mol).mol));
+  } catch (...) {
+    ok = false;
+    return rust::String();
+  }
+}
+
 }  // namespace ob_shim

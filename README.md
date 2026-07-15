@@ -65,6 +65,12 @@ Structure alignment:
   and updates the aligned molecule's coordinates in place. Backed by OpenBabel's
   `OBAlign`, enabled by the vendored Eigen submodule.
 
+2D depiction:
+
+- Render a molecule to an SVG image (`Molecule::to_svg` / `to_svg_with`,
+  `SvgOptions`); 2D coordinates are laid out automatically. Also
+  `Molecule::generate_2d` / `has_2d`. The SVG painter is built in (no Cairo).
+
 ## Thread safety
 
 OpenBabel is not thread-safe — it keeps global mutable state (shared plugin
