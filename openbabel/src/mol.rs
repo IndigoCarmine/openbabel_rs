@@ -40,6 +40,18 @@ pub struct Molecule {
     inner: UniquePtr<ffi::Molecule>,
 }
 
+// SAFETY: a `Molecule` uniquely owns its OpenBabel `OBMol` (via `UniquePtr`) and
+// is never shared — `Send` allows moving one to another thread, not aliasing it,
+// so at most one thread ever touches a given molecule. Every call into
+// OpenBabel goes through the process-global [`with_ob`](crate::with_ob) lock,
+// which serializes all access to OpenBabel's mutable global state (plugin
+// singletons, perception caches, …). Moving an exclusively-owned molecule across
+// threads therefore cannot race. `Molecule` is deliberately **not** `Sync`:
+// concurrent access through a shared `&Molecule` from two threads is still
+// forbidden. This is what lets the lock-free Rust minimizer (which holds no
+// OpenBabel lock during its iteration) optimize many molecules in parallel.
+unsafe impl Send for Molecule {}
+
 impl Molecule {
     /// Create an empty molecule.
     pub fn new() -> Self {
@@ -524,17 +536,82 @@ impl Molecule {
         if ok { Some(e) } else { None }
     }
 
-    /// Energy-minimize the geometry in place using `steps` conjugate-gradient
-    /// steps of the named force field. Returns the final energy, or `None` if
-    /// the force field is unknown or setup fails.
+    /// Energy-minimize the geometry in place with **OpenBabel's own optimizer**
+    /// (`steps` conjugate-gradient steps of the named force field). Returns the
+    /// final energy, or `None` if the force field is unknown or setup fails.
     ///
-    /// For control over the algorithm, convergence, or constraints — or to
-    /// stream the trajectory — use [`optimize_geometry_with`](Self::optimize_geometry_with)
-    /// / [`minimize`](Self::minimize) with a [`Minimizer`](crate::Minimizer).
+    /// This runs entirely inside OpenBabel and so holds the global lock for the
+    /// whole minimization. For the lock-free, parallelizable Rust
+    /// reimplementation, use [`optimize_geometry_rs`](Self::optimize_geometry_rs)
+    /// (the `_rs` suffix marks functions that are *not* OpenBabel — the numeric
+    /// core is evaluated in Rust). For control over the algorithm, convergence,
+    /// or constraints — or to stream the trajectory — use
+    /// [`optimize_geometry_with`](Self::optimize_geometry_with) /
+    /// [`minimize`](Self::minimize) with a [`Minimizer`](crate::Minimizer).
     pub fn optimize_geometry(&mut self, forcefield: &str, steps: u32) -> Option<f64> {
         let mut ok = true;
         let e = with_ob(|| ffi::mol_optimize(self.inner.pin_mut(), forcefield, steps, &mut ok));
         if ok { Some(e) } else { None }
+    }
+
+    /// Energy-minimize the geometry in place with the **Rust numeric core** — a
+    /// reimplementation of the force field's energy, *not* OpenBabel's optimizer
+    /// (hence the `_rs` suffix). Returns the final energy, or `None` if the force
+    /// field has no Rust evaluator (UFF, MMFF94, MMFF94s, GAFF, and Ghemical do)
+    /// or setup fails — for those, use [`optimize_geometry`](Self::optimize_geometry).
+    ///
+    /// OpenBabel precomputes the term coefficients once (under the global lock);
+    /// the minimizer then iterates over a plain coordinate buffer holding **no**
+    /// lock, so many molecules optimize in parallel. Results match OpenBabel's
+    /// own optimizer to a few units of energy.
+    pub fn optimize_geometry_rs(&mut self, forcefield: &str, steps: u32) -> Option<f64> {
+        self.rust_optimize(forcefield, crate::Algorithm::ConjugateGradients, steps, 1e-6)
+    }
+
+    /// Asynchronously energy-minimize the geometry with the **Rust numeric core**
+    /// (the `_rs` marks it as *not* OpenBabel's optimizer — see
+    /// [`optimize_geometry_rs`](Self::optimize_geometry_rs)).
+    ///
+    /// Consumes the molecule and hands it back with the final energy (or `None`
+    /// if the force field has no Rust evaluator). The heavy minimization runs on
+    /// Tokio's blocking pool via [`tokio::task::spawn_blocking`]; because the
+    /// Rust core holds no OpenBabel lock while it iterates, many molecules
+    /// optimize concurrently — only the brief term export and coordinate
+    /// write-back serialize on the global lock.
+    ///
+    /// Available with the `async` crate feature.
+    #[cfg(feature = "async")]
+    pub async fn optimize_geometry_rs_async(
+        mut self,
+        forcefield: impl Into<String>,
+        steps: u32,
+    ) -> (Self, Option<f64>) {
+        let forcefield = forcefield.into();
+        tokio::task::spawn_blocking(move || {
+            let energy = self.optimize_geometry_rs(&forcefield, steps);
+            (self, energy)
+        })
+        .await
+        .expect("optimize_geometry_rs_async blocking task panicked")
+    }
+
+    /// The shared machinery behind [`optimize_geometry_rs`](Self::optimize_geometry_rs):
+    /// export OpenBabel's precomputed terms, minimize in Rust (no OpenBabel calls
+    /// in the loop), and write the relaxed geometry back. `None` if the force
+    /// field has no Rust evaluator.
+    fn rust_optimize(
+        &mut self,
+        forcefield: &str,
+        algorithm: crate::Algorithm,
+        max_steps: u32,
+        econv: f64,
+    ) -> Option<f64> {
+        let flat = self.export_flat(forcefield);
+        let model = crate::ff::build_model(forcefield, &flat)?;
+        let start = self.coordinates();
+        let out = crate::ff::minimize::minimize(model.as_ref(), &start, algorithm, max_steps, econv, 1);
+        self.set_coordinates(&out.coords);
+        Some(out.energy)
     }
 
     /// Energy-minimize the geometry in place under a [`Minimizer`](crate::Minimizer)
@@ -1159,6 +1236,27 @@ impl Molecule {
     /// molecule carries vibration data.
     pub fn vibration_intensities(&self) -> Vec<f64> {
         with_ob(|| ffi::mol_vibration_intensities(self.as_inner()))
+    }
+
+    /// All atom coordinates flattened as `[x0,y0,z0, x1,…]`, in atom-index
+    /// order — the layout the Rust force-field core operates on.
+    pub(crate) fn coordinates(&self) -> Vec<f64> {
+        with_ob(|| ffi::mol_coordinates(self.as_inner()))
+    }
+
+    /// Export `forcefield`'s precomputed energy terms (perceived and
+    /// parameterized by OpenBabel) as the flat buffer the Rust numeric core
+    /// parses. A leading 0 means the force field has no Rust exporter yet.
+    pub(crate) fn export_flat(&self, forcefield: &str) -> Vec<f64> {
+        with_ob(|| ffi::ff_export_terms(self.as_inner(), forcefield))
+    }
+
+    /// OpenBabel's own per-component energies at the current geometry:
+    /// `[format_ok, bond, angle, strbnd, torsion, oop, vdw, elec]`. A parity
+    /// reference the Rust force-field core is validated against in tests.
+    #[cfg(test)]
+    pub(crate) fn energy_components(&self, forcefield: &str) -> Vec<f64> {
+        with_ob(|| ffi::ff_energy_components(self.as_inner(), forcefield))
     }
 
     /// Wrap a non-null `ffi::Molecule` owner. Callers must have checked the

@@ -259,8 +259,21 @@ Reactions:
 OpenBabel is not thread-safe — it keeps global mutable state (shared plugin
 singletons, aromaticity/ring perception caches). This crate therefore
 serializes every call into OpenBabel behind a global lock, so the safe API
-cannot be used to trigger data races. Calls from multiple threads are correct
-but do not run concurrently; for throughput, use multiple processes.
+cannot be used to trigger data races. Time spent *inside* OpenBabel does not run
+concurrently.
+
+**Geometry optimization has a lock-free path.** `Molecule::optimize_geometry`
+runs OpenBabel's own optimizer (holds the lock throughout), while
+`Molecule::optimize_geometry_rs` runs a pure-Rust reimplementation over
+coefficients OpenBabel precomputes once — the `_rs` suffix marks functions that
+are **not** OpenBabel. Its minimizer holds no lock while it iterates, so
+molecules optimize genuinely in parallel: `Molecule` is `Send`, so you can move
+one to each thread, and the optional `async` feature adds
+`Molecule::optimize_geometry_rs_async` (runs on Tokio's blocking pool). Five
+force fields have Rust evaluators — UFF, MMFF94, MMFF94s, GAFF, and Ghemical —
+each verified against OpenBabel's own energies and minima; `optimize_geometry_rs`
+returns `None` for any other force field (use `optimize_geometry` there). See
+[`docs/src/architecture.md`](docs/src/architecture.md) for the design.
 
 ## Building
 

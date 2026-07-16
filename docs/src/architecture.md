@@ -106,12 +106,58 @@ pub(crate) fn with_ob<R>(f: impl FnOnce() -> R) -> R {
 
 Every FFI call goes through `with_ob`. Two consequences worth internalizing:
 
-- **Calls from multiple threads are correct but do not run concurrently.** For
-  throughput, use multiple *processes* rather than threads.
+- **Calls from multiple threads are correct but do not run concurrently.**
+  Time spent *inside* OpenBabel is serialized. The exception is force-field
+  optimization, whose heavy loop runs outside OpenBabel entirely — see
+  [Parallel optimization](#parallel-optimization) below.
 - **The lock is not reentrant.** Inside a `with_ob` closure, keep the raw
   `ffi::…` calls only — never call back into a public method that would itself
   take the lock, or you will deadlock. This is why the internal code passes
   around `as_inner()` / `as_inner_pin_mut()` handles inside the closure.
+
+## Parallel optimization: the lock-free force-field core {#parallel-optimization}
+
+Geometry optimization is the one heavy, CPU-bound operation in the library, and
+it is the one place the global lock would hurt most. So there is a second
+optimizer that runs *outside* OpenBabel.
+
+The two are distinguished by name — the `_rs` suffix marks a function that is
+**not** OpenBabel, but a Rust reimplementation:
+
+- [`Molecule::optimize_geometry`] runs **OpenBabel's own** optimizer, in
+  process, holding the lock for the whole minimization.
+- [`Molecule::optimize_geometry_rs`] runs the **Rust numeric core**, lock-free.
+
+For the `_rs` path, OpenBabel is still the chemist: under the lock, once per
+molecule, it perceives the structure, assigns atom types, and precomputes every
+energy term's coefficients. A shim then exports that term list as a flat buffer,
+and a pure-Rust core (`openbabel::ff`) evaluates the energy and gradient and runs
+the minimizer over a plain coordinate array — **touching no OpenBabel state**:
+
+```text
+[OpenBabel, under the lock, once]  perceive → type → precompute term coefficients → export
+[Rust, no lock held]               evaluate energy/gradient → iterate the minimizer   ← the heavy part
+[OpenBabel, under the lock, once]  write the relaxed coordinates back
+```
+
+Only the two short bracketed steps take the lock; the iteration between them
+does not. Five of OpenBabel's force fields have Rust evaluators — **UFF,
+MMFF94, MMFF94s, GAFF, and Ghemical** (its whole 3.2.1 line-up) — each verified
+to reproduce OpenBabel's own energies and minima. `optimize_geometry_rs` returns
+`None` for any other force field; call `optimize_geometry` (OpenBabel) for those.
+
+Because the `_rs` hot loop is lock-free, molecules optimize genuinely in
+parallel. `Molecule` is `Send` (an `unsafe impl` justified by exclusive
+ownership plus the global lock), so each can move to its own thread; the brief
+export and write-back serialize while the minimizations overlap. The `async`
+feature adds [`Molecule::optimize_geometry_rs_async`], which runs the same work
+on Tokio's blocking pool. This is what the original "add async to the optimizer"
+request became: not a thin wrapper over a serialized call, but an optimizer whose
+expensive part actually is concurrent.
+
+[`Molecule::optimize_geometry`]: https://docs.rs/openbabel/latest/openbabel/struct.Molecule.html#method.optimize_geometry
+[`Molecule::optimize_geometry_rs`]: https://docs.rs/openbabel/latest/openbabel/struct.Molecule.html#method.optimize_geometry_rs
+[`Molecule::optimize_geometry_rs_async`]: https://docs.rs/openbabel/latest/openbabel/struct.Molecule.html#method.optimize_geometry_rs_async
 
 ## Runtime initialization: finding plugins and data {#runtime-initialization-finding-plugins-and-data}
 
