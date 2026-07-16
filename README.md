@@ -231,6 +231,17 @@ Reactions:
   equivalents), or build one up with `new` + `add_reactant` / `add_product` /
   `add_agent`. (To *apply* a reaction as a graph edit, use [`Transform`].)
 
+Graph navigation & crystallography:
+
+- Walk the molecular graph from an [`Atom`]: `neighbors`, `bonds`, `bond_to`
+  (the bond joining two atoms, if any), `count_bonds_of_order`, and
+  `explicit_hydrogen_count`; from a [`Bond`], `other_atom` crosses to the far
+  end. `Molecule::bond_between` looks up the bond between two atom indices.
+- Crystallographic unit cells (present after reading a CIF and similar):
+  `Molecule::has_unit_cell` / `unit_cell` yield a [`UnitCell`] with `lengths`,
+  `angles`, `volume`, `space_group`, `lattice_type` (a `LatticeType`), and
+  `to_fractional` / `to_cartesian` coordinate conversions.
+
 ## Thread safety
 
 OpenBabel is not thread-safe — it keeps global mutable state (shared plugin
