@@ -13,7 +13,7 @@ repository.workspace = true
 async = ["dep:tokio"]
 
 [dependencies]
-openbabel-sys = { path = "../openbabel-sys", version = "0.1.0" }
+openbabel-sys = { path = "../openbabel-sys", version = "0.3.0" }
 cxx.workspace = true
 tokio = { version = "1", optional = true, default-features = false, features = ["rt"] }
 

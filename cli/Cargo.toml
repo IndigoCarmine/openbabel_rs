@@ -11,4 +11,4 @@ name = "openbabel-demo"
 path = "src/main.rs"
 
 [dependencies]
-openbabel = { path = "../openbabel", version = "0.1.0" }
+openbabel = { path = "../openbabel", version = "0.3.0" }
