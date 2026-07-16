@@ -39,6 +39,11 @@ fn bond_between_and_other_atom() {
     let across = b.other_atom(&c0).expect("other end");
     assert_eq!(across.index(), 1);
 
+    // Regression: an atom that isn't an endpoint of this bond must give None
+    // (OBBond::GetNbrAtom would otherwise return the begin atom).
+    let o2 = mol.atom(2).unwrap();
+    assert!(b.other_atom(&o2).is_none(), "O2 is not on the C0–C1 bond");
+
     // bond_to mirrors bond_between.
     let c1 = mol.atom(1).unwrap();
     assert!(c0.bond_to(&c1).is_some());

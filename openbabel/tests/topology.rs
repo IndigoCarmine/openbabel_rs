@@ -39,6 +39,19 @@ fn find_children_walks_one_side_of_a_bond() {
 }
 
 #[test]
+fn find_children_out_of_range_is_empty_not_a_crash() {
+    // Regression: an out-of-range `to` used to seed OBMol::FindChildren's BFS
+    // with GetAtom(to+1) == null and dereference it → segfault reachable from
+    // safe Rust. It must now return empty instead.
+    let mol = Molecule::parse("CCO", "smi").expect("parse"); // 3 atoms, valid 0..=2
+    assert!(mol.find_children(0, mol.num_atoms()).is_empty()); // to == 3, out of range
+    assert!(mol.find_children(0, 99).is_empty());
+    assert!(mol.find_children(99, 1).is_empty()); // out-of-range `from`
+    let empty = Molecule::new();
+    assert!(empty.find_children(0, 0).is_empty());
+}
+
+#[test]
 fn largest_fragment_excludes_counter_ions() {
     // Ethanol plus a dissociated salt: atoms C0, C1, O2, Na3, Cl4.
     let mol = Molecule::parse("CCO.[Na+].[Cl-]", "smi").expect("parse");

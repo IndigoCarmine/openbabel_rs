@@ -1230,6 +1230,11 @@ uint32_t mol_add_atom(Molecule &mol, uint32_t atomic_num) {
 }
 bool mol_add_bond(Molecule &mol, uint32_t begin, uint32_t end, uint32_t order) {
   try {
+    // Reject out-of-range endpoints: OBMol::AddBond otherwise takes its "atom
+    // doesn't exist yet" path, silently queuing an OBVirtualBond to a
+    // nonexistent atom and returning true — corrupting the molecule.
+    uint32_t n = mol.mol.NumAtoms();
+    if (begin >= n || end >= n) return false;
     // OpenBabel bond endpoints are 1-based atom indices.
     return mol.mol.AddBond(static_cast<int>(begin) + 1, static_cast<int>(end) + 1,
                            static_cast<int>(order));
@@ -1537,6 +1542,9 @@ int bond_other_atom(const Molecule &mol, uint32_t bond_idx, uint32_t atom_idx) {
   auto *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, bond_idx));
   auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, atom_idx + 1));  // atom_idx is 0-based here
   if (!b || !a) return -1;
+  // GetNbrAtom returns the begin atom for ANY atom that isn't the end atom
+  // (including one not on this bond at all), so verify membership first.
+  if (a != b->GetBeginAtom() && a != b->GetEndAtom()) return -1;
   OpenBabel::OBAtom *other = b->GetNbrAtom(a);
   return other ? static_cast<int>(other->GetIdx()) - 1 : -1;
 }
@@ -1818,10 +1826,19 @@ void mol_set_torsion(Molecule &mol, uint32_t a, uint32_t b, uint32_t c, uint32_t
 // through `from` (excludes both endpoints).
 rust::Vec<uint32_t> mol_find_children(const Molecule &mol, uint32_t from, uint32_t to) {
   rust::Vec<uint32_t> out;
-  std::vector<int> children;  // 1-based
-  const_cast<Molecule &>(mol).mol.FindChildren(children, static_cast<int>(from) + 1,
-                                               static_cast<int>(to) + 1);
-  for (int i : children) out.push_back(static_cast<uint32_t>(i) - 1);
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    // OBMol::FindChildren seeds its BFS with GetAtom(to+1) and dereferences it
+    // unconditionally, so an out-of-range `to` would null-deref (a crash a
+    // try/catch can't catch). Require both endpoints to be real atoms.
+    uint32_t n = m.NumAtoms();
+    if (from >= n || to >= n) return out;
+    std::vector<int> children;  // 1-based
+    m.FindChildren(children, static_cast<int>(from) + 1, static_cast<int>(to) + 1);
+    for (int i : children) out.push_back(static_cast<uint32_t>(i) - 1);
+  } catch (...) {
+    out.clear();
+  }
   return out;
 }
 
@@ -1861,7 +1878,7 @@ rust::String get_pair_data(OpenBabel::OBBase *b, const std::string &key, bool &o
     return rust::String();
   }
   ok = true;
-  return rust::String(pd->GetValue());
+  return to_rust(pd->GetValue());
 }
 }  // namespace
 

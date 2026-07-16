@@ -21,6 +21,22 @@ fn build_water_from_scratch() {
 }
 
 #[test]
+fn add_bond_rejects_out_of_range_indices() {
+    // Regression: OBMol::AddBond queues an OBVirtualBond (and returns true) when
+    // an endpoint is out of range. add_bond must instead return false and leave
+    // the graph untouched.
+    let mut mol = Molecule::new();
+    let a = mol.add_atom(6);
+    let b = mol.add_atom(6);
+    assert!(!mol.add_bond(a, 99, 1), "out-of-range end must be rejected");
+    assert!(!mol.add_bond(99, b, 1), "out-of-range begin must be rejected");
+    assert_eq!(mol.num_bonds(), 0, "no bond (real or virtual) was added");
+    // A valid bond still works.
+    assert!(mol.add_bond(a, b, 1));
+    assert_eq!(mol.num_bonds(), 1);
+}
+
+#[test]
 fn edit_atom_properties() {
     // Set formal charge: ammonia N (neutral) -> ammonium-like +1 total charge.
     let mut mol = Molecule::parse("N", "smi").expect("parse");
