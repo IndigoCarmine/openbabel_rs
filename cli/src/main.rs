@@ -141,6 +141,16 @@ fn main() {
         // Conformer search (T7): count diverse low-energy conformers.
         println!("Conformers:        {}", mol.generate_conformers(10));
 
+        // Score every conformer at once (T17): report the lowest energy found.
+        if let Some(lowest) = mol
+            .conformer_energies("MMFF94")
+            .into_iter()
+            .filter(|e| e.is_finite())
+            .reduce(f64::min)
+        {
+            println!("  lowest E:        {lowest:.3} {unit}");
+        }
+
         // Spectrophore descriptor (T9): a 48-value 3D shape/property fingerprint.
         let sp = mol.spectrophore();
         if !sp.is_empty() {

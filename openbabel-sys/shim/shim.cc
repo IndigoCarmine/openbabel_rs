@@ -599,6 +599,53 @@ void mol_set_conformer(Molecule &mol, uint32_t index) {
   }
 }
 
+// Flat [x,y,z,...] coordinates of conformer `index` (3*NumAtoms doubles),
+// read WITHOUT changing the active conformer. Empty if out of range.
+rust::Vec<double> mol_conformer_coordinates(const Molecule &mol, uint32_t index) {
+  rust::Vec<double> out;
+  OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+  if (index >= static_cast<uint32_t>(m.NumConformers())) return out;
+  const double *c = m.GetConformer(static_cast<int>(index));
+  if (!c) return out;
+  uint32_t n = static_cast<uint32_t>(m.NumAtoms());
+  for (uint32_t i = 0; i < 3 * n; ++i) out.push_back(c[i]);
+  return out;
+}
+
+// Energy of every stored conformer under force field `ff_id`, in conformer
+// order. The active conformer is restored before returning, so this does not
+// change the molecule. Empty if `ff_id` is unknown or there are no conformers.
+rust::Vec<double> mol_conformer_energies(const Molecule &mol, rust::Str ff_id) {
+  rust::Vec<double> out;
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    int n = m.NumConformers();
+    if (n == 0) return out;
+    OpenBabel::OBForceField *ff = find_forcefield(to_std(ff_id));
+    if (!ff || !ff->Setup(m)) return out;
+    // Remember the active conformer so we can restore it afterwards.
+    const double *saved = m.GetCoordinates();
+    int saved_idx = 0;
+    for (int i = 0; i < n; ++i)
+      if (m.GetConformer(i) == saved) {
+        saved_idx = i;
+        break;
+      }
+    for (int i = 0; i < n; ++i) {
+      m.SetConformer(i);
+      // Push the now-active conformer's coordinates into the field without a
+      // full re-Setup (which would be skipped for this same-topology molecule
+      // and keep stale coordinates).
+      ff->SetCoordinates(m);
+      out.push_back(ff->Energy(false));
+    }
+    m.SetConformer(saved_idx);
+    return out;
+  } catch (...) {
+    return out;
+  }
+}
+
 // --- Element data --------------------------------------------------------
 
 rust::String element_symbol(uint32_t z) {

@@ -178,6 +178,9 @@ Rings & multi-molecule I/O:
 - Read and write files directly: `Molecule::read_file` / `read_file_many` /
   `write_file` take a path and an optional format id — pass `None` to let
   OpenBabel infer the format from the file extension.
+- After a conformer search (`generate_conformers`), read each conformer's
+  geometry with `Molecule::conformer_coordinates` and score them all at once
+  with `conformer_energies` — both without disturbing the active conformer.
 
 Graph navigation & crystallography:
 

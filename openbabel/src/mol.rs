@@ -476,9 +476,35 @@ impl Molecule {
     }
 
     /// Make conformer `index` the active coordinates. Out-of-range indices are
-    /// ignored. Combine with [`energy`](Self::energy) to score each conformer.
+    /// ignored.
+    ///
+    /// To score every conformer, prefer [`conformer_energies`](Self::conformer_energies):
+    /// it evaluates them all under one lock, whereas a `set_conformer` +
+    /// [`energy`](Self::energy) loop leaves the force field's shared state open
+    /// to interference from concurrent force-field calls between the two steps.
     pub fn set_conformer(&mut self, index: u32) {
         with_ob(|| ffi::mol_set_conformer(self.inner.pin_mut(), index));
+    }
+
+    /// The `(x, y, z)` coordinates of every atom in conformer `index`, in atom
+    /// order — read without changing which conformer is active. `None` if
+    /// `index` is out of range.
+    pub fn conformer_coordinates(&self, index: u32) -> Option<Vec<[f64; 3]>> {
+        if index >= self.num_conformers() {
+            return None;
+        }
+        let flat = with_ob(|| ffi::mol_conformer_coordinates(self.as_inner(), index));
+        Some(flat.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect())
+    }
+
+    /// The energy of every stored conformer under `forcefield`, in conformer
+    /// order — the parallel of scoring each with [`energy`](Self::energy) but
+    /// without disturbing the active conformer.
+    ///
+    /// Empty if `forcefield` is unknown (see
+    /// [`energy`](Self::energy) for the valid ids) or no conformers exist.
+    pub fn conformer_energies(&self, forcefield: &str) -> Vec<f64> {
+        with_ob(|| ffi::mol_conformer_energies(self.as_inner(), forcefield))
     }
 
     /// Translate the molecule so its centroid sits at the origin.

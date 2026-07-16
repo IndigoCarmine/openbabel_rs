@@ -216,6 +216,10 @@ uint32_t mol_generate_conformers(Molecule &mol, uint32_t count);
 uint32_t mol_num_conformers(const Molecule &mol);
 // Make conformer `index` the active coordinates (no-op if out of range).
 void mol_set_conformer(Molecule &mol, uint32_t index);
+// Flat [x,y,z,...] of conformer `index`, without changing the active conformer.
+rust::Vec<double> mol_conformer_coordinates(const Molecule &mol, uint32_t index);
+// Energy of each conformer under `ff_id`, restoring the active conformer.
+rust::Vec<double> mol_conformer_energies(const Molecule &mol, rust::Str ff_id);
 
 // --- Element data (OBElements, keyed by atomic number) --------------------
 rust::String element_symbol(uint32_t atomic_number);

@@ -185,6 +185,10 @@ pub mod ffi {
         fn mol_num_conformers(mol: &Molecule) -> u32;
         /// Make conformer `index` the active coordinates (no-op if out of range).
         fn mol_set_conformer(mol: Pin<&mut Molecule>, index: u32);
+        /// Flat `[x,y,z,…]` of conformer `index` without changing the active one.
+        fn mol_conformer_coordinates(mol: &Molecule, index: u32) -> Vec<f64>;
+        /// Energy of each conformer under `ff_id`; restores the active conformer.
+        fn mol_conformer_energies(mol: &Molecule, ff_id: &str) -> Vec<f64>;
 
         // Element data (by atomic number).
         fn element_symbol(atomic_number: u32) -> String;
