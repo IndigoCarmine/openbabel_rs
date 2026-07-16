@@ -23,6 +23,7 @@ mod bond;
 mod constraints;
 pub mod elements;
 mod error;
+mod ff;
 mod fingerprint;
 mod minimize;
 mod mol;

@@ -312,6 +312,16 @@ rust::Vec<double> mol_vibration_intensities(const Molecule &mol);
 // All atom coordinates flattened as [x0,y0,z0, x1,y1,z1, ...] (3 per atom).
 rust::Vec<double> mol_coordinates(const Molecule &mol);
 
+// Export a force field's precomputed energy terms as a flat, self-describing
+// f64 buffer (see the Rust-side doc in src/lib.rs for the exact layout). Only
+// "UFF" is supported so far; a first element of 0 signals an unknown/
+// unsupported force field.
+rust::Vec<double> ff_export_terms(const Molecule &mol, rust::Str ff_id);
+
+// OpenBabel's own per-component energies (a parity reference for the Rust core):
+// [format_ok, bond, angle, strbnd, torsion, oop, vdw, elec].
+rust::Vec<double> ff_energy_components(const Molecule &mol, rust::Str ff_id);
+
 // --- Force-field constraints (atom indices are 0-based here; the shim adds 1
 // for OpenBabel's 1-based OBFFConstraints) --------------------------------
 std::unique_ptr<Constraints> constraints_new();

@@ -13,6 +13,7 @@
 #include <openbabel/generic.h>
 #include <openbabel/graphsym.h>
 #include <openbabel/isomorphism.h>
+#include <openbabel/obiter.h>
 #include <openbabel/math/align.h>
 #include <openbabel/math/vector3.h>
 #include <openbabel/obconversion.h>
@@ -25,6 +26,16 @@
 #include <openbabel/stereo/cistrans.h>
 #include <openbabel/stereo/stereo.h>
 #include <openbabel/stereo/tetrahedral.h>
+
+// Concrete force-field class, for the Rust term exporter (ff_export_terms). It
+// lives in OpenBabel's src/forcefields/ (not the installed headers); build.rs
+// adds that directory to this shim's include path and patches this header with
+// read-only accessors for its precomputed calculation vectors.
+#include "forcefielduff.h"
+#include "forcefieldghemical.h"
+#include "forcefieldgaff.h"
+#include "forcefieldmmff94.h"
+#include "forcefieldmm2.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -1054,6 +1065,594 @@ rust::Vec<double> mol_coordinates(const Molecule &mol) {
       out.push_back(a->GetZ());
     }
   } catch (...) {
+  }
+  return out;
+}
+
+// Export a force field's precomputed energy terms as a flat f64 buffer. See the
+// Rust-side doc (src/lib.rs) for the exact layout. OpenBabel does the setup
+// (perception, typing, per-term coefficient precomputation); we read the
+// resulting calculation vectors via the accessors build.rs injects and flatten
+// them. Atom indices are emitted 0-based. A leading 0 signals an unknown /
+// unsupported force field.
+rust::Vec<double> ff_export_terms(const Molecule &mol, rust::Str ff_id) {
+  rust::Vec<double> out;
+  try {
+    // Down-cast with static_cast (not dynamic_cast): OpenBabel does not export
+    // the concrete force-field classes' RTTI from its DLL, so a cross-module
+    // dynamic_cast would fail to link on MSVC. Gating on the id keeps each
+    // static_cast sound — find_forcefield("UFF") is an OBForceFieldUFF, etc.
+    std::string id = to_std(ff_id);
+    for (char &ch : id) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
+    OpenBabel::OBForceField *ff = find_forcefield(to_std(ff_id));
+    if (!ff) {
+      out.push_back(0.0);
+      return out;
+    }
+    // Set up on a private copy so the caller's molecule is left untouched. The
+    // force field caches its setup against this copy; the calculation vectors
+    // it fills hold atom pointers into that cached copy, valid until the next
+    // Setup — which is within this single locked call.
+    OpenBabel::OBMol work = mol.mol;
+    if (!ff->Setup(work)) {
+      out.push_back(0.0);
+      return out;
+    }
+
+    if (id == "UFF") {
+    auto *uff = static_cast<OpenBabel::OBForceFieldUFF *>(ff);
+
+    out.push_back(1.0);  // format_ok
+    out.push_back(static_cast<double>(work.NumAtoms()));
+
+    const auto &bonds = uff->RsBondCalcs();
+    out.push_back(static_cast<double>(bonds.size()));
+    for (const auto &t : bonds) {
+      out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+      out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+      out.push_back(t.kb);
+      out.push_back(t.r0);
+    }
+
+    const auto &angles = uff->RsAngleCalcs();
+    out.push_back(static_cast<double>(angles.size()));
+    for (const auto &t : angles) {
+      out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+      out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+      out.push_back(static_cast<double>(t.c->GetIdx() - 1));
+      out.push_back(t.ka);
+      out.push_back(t.theta0);
+      out.push_back(t.c0);
+      out.push_back(t.c1);
+      out.push_back(t.c2);
+      out.push_back(static_cast<double>(t.coord));
+      out.push_back(static_cast<double>(t.n));
+    }
+
+    const auto &tors = uff->RsTorsionCalcs();
+    out.push_back(static_cast<double>(tors.size()));
+    for (const auto &t : tors) {
+      out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+      out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+      out.push_back(static_cast<double>(t.c->GetIdx() - 1));
+      out.push_back(static_cast<double>(t.d->GetIdx() - 1));
+      out.push_back(t.V);
+      out.push_back(static_cast<double>(t.n));
+      out.push_back(t.cosNPhi0);
+    }
+
+    const auto &oops = uff->RsOopCalcs();
+    out.push_back(static_cast<double>(oops.size()));
+    for (const auto &t : oops) {
+      out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+      out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+      out.push_back(static_cast<double>(t.c->GetIdx() - 1));
+      out.push_back(static_cast<double>(t.d->GetIdx() - 1));
+      out.push_back(t.koop);
+      out.push_back(t.c0);
+      out.push_back(t.c1);
+      out.push_back(t.c2);
+    }
+
+    const auto &vdws = uff->RsVdwCalcs();
+    out.push_back(static_cast<double>(vdws.size()));
+    for (const auto &t : vdws) {
+      out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+      out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+      out.push_back(t.kab);
+      out.push_back(t.kaSquared);
+    }
+
+    const auto &elecs = uff->RsElecCalcs();
+    out.push_back(static_cast<double>(elecs.size()));
+    for (const auto &t : elecs) {
+      out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+      out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+      out.push_back(t.qq);
+    }
+    } else if (id == "GHEMICAL") {
+      auto *g = static_cast<OpenBabel::OBForceFieldGhemical *>(ff);
+      out.push_back(1.0);  // format_ok
+      out.push_back(static_cast<double>(work.NumAtoms()));
+
+      const auto &bonds = g->RsBondCalcs();  // harmonic: kb·(r−r0)²
+      out.push_back(static_cast<double>(bonds.size()));
+      for (const auto &t : bonds) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(t.kb);
+        out.push_back(t.r0);
+      }
+
+      const auto &angles = g->RsAngleCalcs();  // harmonic in degrees: ka·(θ−θ0)²
+      out.push_back(static_cast<double>(angles.size()));
+      for (const auto &t : angles) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.c->GetIdx() - 1));
+        out.push_back(t.ka);
+        out.push_back(t.theta0);  // degrees
+      }
+
+      const auto &tors = g->RsTorsionCalcs();  // k1(1+cosφ)+k2(1−cos2φ)+k3(1+cos3φ)
+      out.push_back(static_cast<double>(tors.size()));
+      for (const auto &t : tors) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.c->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.d->GetIdx() - 1));
+        out.push_back(t.k1);
+        out.push_back(t.k2);
+        out.push_back(t.k3);
+      }
+
+      const auto &vdws = g->RsVdwCalcs();  // (σ12/r)¹² − (σ6/r)⁶
+      out.push_back(static_cast<double>(vdws.size()));
+      for (const auto &t : vdws) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(t.sigma12);
+        out.push_back(t.sigma6);
+      }
+
+      const auto &gelecs = g->RsElecCalcs();  // qq / r
+      out.push_back(static_cast<double>(gelecs.size()));
+      for (const auto &t : gelecs) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(t.qq);
+      }
+    } else if (id == "GAFF") {
+      auto *g = static_cast<OpenBabel::OBForceFieldGaff *>(ff);
+      out.push_back(1.0);  // format_ok
+      out.push_back(static_cast<double>(work.NumAtoms()));
+
+      const auto &bonds = g->RsBondCalcs();  // harmonic: kr·(r−r0)²
+      out.push_back(static_cast<double>(bonds.size()));
+      for (const auto &t : bonds) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(t.kr);
+        out.push_back(t.r0);
+      }
+
+      const auto &angles = g->RsAngleCalcs();  // kth·(θ−θ0)² in radians (θ0 in degrees)
+      out.push_back(static_cast<double>(angles.size()));
+      for (const auto &t : angles) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.c->GetIdx() - 1));
+        out.push_back(t.kth);
+        out.push_back(t.theta0);  // degrees
+      }
+
+      const auto &tors = g->RsTorsionCalcs();  // vn_half·(1 + cos(n·φ − γ))
+      out.push_back(static_cast<double>(tors.size()));
+      for (const auto &t : tors) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.c->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.d->GetIdx() - 1));
+        out.push_back(t.vn_half);
+        out.push_back(t.gamma);  // degrees
+        out.push_back(t.n);
+      }
+
+      const auto &oops = g->RsOopCalcs();  // improper torsion, same form as torsion
+      out.push_back(static_cast<double>(oops.size()));
+      for (const auto &t : oops) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.c->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.d->GetIdx() - 1));
+        out.push_back(t.vn_half);
+        out.push_back(t.gamma);  // degrees
+        out.push_back(t.n);
+      }
+
+      const auto &vdws = g->RsVdwCalcs();  // Eab·((RVDWab/r)¹² − 2(RVDWab/r)⁶)
+      out.push_back(static_cast<double>(vdws.size()));
+      for (const auto &t : vdws) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(t.Eab);
+        out.push_back(t.RVDWab);
+      }
+
+      const auto &gelecs = g->RsElecCalcs();  // qq / r
+      out.push_back(static_cast<double>(gelecs.size()));
+      for (const auto &t : gelecs) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(t.qq);
+      }
+    } else if (id == "MMFF94" || id == "MMFF94S") {
+      // MMFF94 and MMFF94s are the same class (OBForceFieldMMFF94, distinguished
+      // by an internal `mmff94s` flag); Setup fills the calc vectors with the
+      // variant-correct coefficients, so a single emit path serves both.
+      auto *g = static_cast<OpenBabel::OBForceFieldMMFF94 *>(ff);
+      out.push_back(1.0);  // format_ok
+      out.push_back(static_cast<double>(work.NumAtoms()));
+
+      const auto &bonds = g->RsBondCalcs();  // 143.9325·0.5·kb·δ²·(1−2δ+7/3·δ²)
+      out.push_back(static_cast<double>(bonds.size()));
+      for (const auto &t : bonds) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(t.kb);
+        out.push_back(t.r0);
+      }
+
+      const auto &angles = g->RsAngleCalcs();  // cubic bend (or linear: cosine)
+      out.push_back(static_cast<double>(angles.size()));
+      for (const auto &t : angles) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.c->GetIdx() - 1));
+        out.push_back(t.ka);
+        out.push_back(t.theta0);  // degrees
+        out.push_back(t.linear ? 1.0 : 0.0);
+      }
+
+      const auto &strbnd = g->RsStrBndCalcs();  // 2.51210·(kbaABC·Δrab+kbaCBA·Δrbc)·Δθ°
+      out.push_back(static_cast<double>(strbnd.size()));
+      for (const auto &t : strbnd) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.c->GetIdx() - 1));
+        out.push_back(t.kbaABC);
+        out.push_back(t.kbaCBA);
+        out.push_back(t.theta0);  // degrees
+        out.push_back(t.rab0);
+        out.push_back(t.rbc0);
+      }
+
+      const auto &tors = g->RsTorsionCalcs();  // 0.5·(v1·φ1 + v2·φ2 + v3·φ3)
+      out.push_back(static_cast<double>(tors.size()));
+      for (const auto &t : tors) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.c->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.d->GetIdx() - 1));
+        out.push_back(t.v1);
+        out.push_back(t.v2);
+        out.push_back(t.v3);
+      }
+
+      const auto &oops = g->RsOopCalcs();  // 0.043844·0.5·koop·χ°²  (Wilson angle)
+      out.push_back(static_cast<double>(oops.size()));
+      for (const auto &t : oops) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.c->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.d->GetIdx() - 1));
+        out.push_back(t.koop);
+      }
+
+      const auto &vdws = g->RsVdwCalcs();  // buffered 14-7: ε·erep⁷·eattr
+      out.push_back(static_cast<double>(vdws.size()));
+      for (const auto &t : vdws) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(t.epsilon);
+        out.push_back(t.R_AB);
+        out.push_back(t.R_AB7);
+      }
+
+      const auto &melecs = g->RsElecCalcs();  // qq / (rab + 0.05)
+      out.push_back(static_cast<double>(melecs.size()));
+      for (const auto &t : melecs) {
+        out.push_back(static_cast<double>(t.a->GetIdx() - 1));
+        out.push_back(static_cast<double>(t.b->GetIdx() - 1));
+        out.push_back(t.qq);
+      }
+    } else if (id == "MM2") {
+      // MM2 has no calc vectors; replicate its energy-method iteration exactly,
+      // emitting each term's atom indices plus the resolved (geometry-
+      // independent) coefficients. The Rust evaluator applies the formulas.
+      // Parameter-vector selectors for RsParam/RsParamIdx: 0 bond, 1 angle,
+      // 2 strbnd, 3 torsion, 4 oop, 5 vdwpr, 6 vdw, 7 dipole.
+      auto *mm2 = static_cast<OpenBabel::OBForceFieldMM2 *>(ff);
+      // The FOR_*_OF_MOL macros expand to `impl::MolGet…`; that is OpenBabel's
+      // namespace, so alias it here (this shim code is not inside `OpenBabel`).
+      namespace impl = OpenBabel::impl;
+      OpenBabel::OBMol &m = mm2->RsMol();
+      out.push_back(1.0);  // format_ok
+      out.push_back(static_cast<double>(m.NumAtoms()));
+
+      // Global constants used by the MM2 functional forms.
+      out.push_back(mm2->RsBondUnit());
+      out.push_back(mm2->RsBondCubic());
+      out.push_back(mm2->RsBondQuartic());
+      out.push_back(mm2->RsAngleUnit());
+      out.push_back(mm2->RsAngleSextic());
+      out.push_back(mm2->RsStretchBendUnit());
+      out.push_back(mm2->RsTorsionUnit());
+      out.push_back(mm2->RsOutPlaneBendUnit());
+      out.push_back(mm2->RsAExpterm());
+      out.push_back(mm2->RsBExpterm());
+      out.push_back(mm2->RsCExpterm());
+      {
+        const double debye = 4.8033324, electric = 332.05382;
+        out.push_back(electric / (debye * debye * mm2->RsDielectric()));  // elec_f
+      }
+
+      // Bonds: bondunit·force·δ²·(1 + bond_cubic·δ + bond_quartic·δ²).
+      {
+        size_t pos = out.size();
+        out.push_back(0.0);
+        double n = 0.0;
+        FOR_BONDS_OF_MOL (bond, m) {
+          OpenBabel::OBAtom *a = bond->GetBeginAtom();
+          OpenBabel::OBAtom *b = bond->GetEndAtom();
+          OpenBabel::OBFFParameter *p =
+              mm2->RsParam(atoi(a->GetType()), atoi(b->GetType()), 0, 0, 0);
+          if (!p) continue;
+          out.push_back(static_cast<double>(a->GetIdx() - 1));
+          out.push_back(static_cast<double>(b->GetIdx() - 1));
+          out.push_back(p->_dpar[1]);  // force
+          out.push_back(p->_dpar[0]);  // l_ref
+          n += 1.0;
+        }
+        out[pos] = n;
+      }
+
+      // Angles: angleunit·force·δ²·(1 + angle_sextic·δ⁴), δ in degrees, vertex b.
+      {
+        size_t pos = out.size();
+        out.push_back(0.0);
+        double n = 0.0;
+        FOR_ANGLES_OF_MOL (angle, m) {
+          OpenBabel::OBAtom *b = m.GetAtom((*angle)[0] + 1);
+          OpenBabel::OBAtom *a = m.GetAtom((*angle)[1] + 1);
+          OpenBabel::OBAtom *c = m.GetAtom((*angle)[2] + 1);
+          if (!a || !b || !c) continue;
+          OpenBabel::OBFFParameter *p = mm2->RsParam(
+              atoi(a->GetType()), atoi(b->GetType()), atoi(c->GetType()), 0, 1);
+          if (!p) continue;
+          out.push_back(static_cast<double>(a->GetIdx() - 1));
+          out.push_back(static_cast<double>(b->GetIdx() - 1));
+          out.push_back(static_cast<double>(c->GetIdx() - 1));
+          out.push_back(p->_dpar[1]);  // force
+          out.push_back(p->_dpar[0]);  // ang_ref (degrees)
+          n += 1.0;
+        }
+        out[pos] = n;
+      }
+
+      // Stretch-bend: stretchbendunit·force·Δθ·(Δr_ab + Δr_bc).
+      {
+        size_t pos = out.size();
+        out.push_back(0.0);
+        double n = 0.0;
+        FOR_ANGLES_OF_MOL (angle, m) {
+          OpenBabel::OBAtom *b = m.GetAtom((*angle)[0] + 1);
+          OpenBabel::OBAtom *a = m.GetAtom((*angle)[1] + 1);
+          OpenBabel::OBAtom *c = m.GetAtom((*angle)[2] + 1);
+          if (!a || !b || !c) continue;
+          OpenBabel::OBFFParameter *pf = mm2->RsParam(atoi(b->GetType()), 0, 0, 0, 2);
+          OpenBabel::OBFFParameter *pa = mm2->RsParam(
+              atoi(a->GetType()), atoi(b->GetType()), atoi(c->GetType()), 0, 1);
+          OpenBabel::OBFFParameter *p1 =
+              mm2->RsParam(atoi(b->GetType()), atoi(a->GetType()), 0, 0, 0);
+          OpenBabel::OBFFParameter *p2 =
+              mm2->RsParam(atoi(b->GetType()), atoi(c->GetType()), 0, 0, 0);
+          if (!pf || !pa || !p1 || !p2) continue;
+          out.push_back(static_cast<double>(a->GetIdx() - 1));
+          out.push_back(static_cast<double>(b->GetIdx() - 1));
+          out.push_back(static_cast<double>(c->GetIdx() - 1));
+          out.push_back(pf->_dpar[0]);  // force
+          out.push_back(pa->_dpar[0]);  // ang_ref
+          out.push_back(p1->_dpar[0]);  // l_ref1 (b-a)
+          out.push_back(p2->_dpar[0]);  // l_ref2 (b-c)
+          n += 1.0;
+        }
+        out[pos] = n;
+      }
+
+      // Torsion: torsionunit·(v1·(1+cosφ) + v2·(1−cos2φ) + v3·(1+cos3φ)).
+      {
+        size_t pos = out.size();
+        out.push_back(0.0);
+        double n = 0.0;
+        FOR_TORSIONS_OF_MOL (t, m) {
+          OpenBabel::OBAtom *a = m.GetAtom((*t)[0] + 1);
+          OpenBabel::OBAtom *b = m.GetAtom((*t)[1] + 1);
+          OpenBabel::OBAtom *c = m.GetAtom((*t)[2] + 1);
+          OpenBabel::OBAtom *d = m.GetAtom((*t)[3] + 1);
+          if (!a || !b || !c || !d) continue;
+          OpenBabel::OBFFParameter *p = mm2->RsParam(atoi(a->GetType()),
+              atoi(b->GetType()), atoi(c->GetType()), atoi(d->GetType()), 3);
+          if (!p) continue;
+          out.push_back(static_cast<double>(a->GetIdx() - 1));
+          out.push_back(static_cast<double>(b->GetIdx() - 1));
+          out.push_back(static_cast<double>(c->GetIdx() - 1));
+          out.push_back(static_cast<double>(d->GetIdx() - 1));
+          out.push_back(p->_dpar[0]);  // v1
+          out.push_back(p->_dpar[1]);  // v2
+          out.push_back(p->_dpar[2]);  // v3
+          n += 1.0;
+        }
+        out[pos] = n;
+      }
+
+      // Out-of-plane: outplanebendunit·force·χ², χ = Point2PlaneAngle(p0,p1,p2,p3)
+      // in degrees. Mirrors MM2's neighbour enumeration and its three cases.
+      {
+        size_t pos = out.size();
+        out.push_back(0.0);
+        double n = 0.0;
+        std::vector<OpenBabel::OBFFParameter> &oopv = mm2->RsVec(4);
+        FOR_ATOMS_OF_MOL (atom, m) {
+          OpenBabel::OBAtom *b = &*atom;
+          for (size_t idx = 0; idx < oopv.size(); ++idx) {
+            if (atoi(b->GetType()) != oopv[idx].a) continue;
+            OpenBabel::OBAtom *a = nullptr, *c = nullptr, *d = nullptr;
+            FOR_NBORS_OF_ATOM (nbr, b) {
+              if (!a) a = &*nbr;
+              else if (!c) c = &*nbr;
+              else d = &*nbr;
+            }
+            if (!a || !c || !d) continue;  // needs three substituents
+            double force = oopv[idx]._dpar[0];
+            // Each matched case: angle = Point2PlaneAngle(p0, p1, p2, p3).
+            if (atoi(d->GetType()) == oopv[idx].b) {
+              out.push_back(static_cast<double>(d->GetIdx() - 1));
+              out.push_back(static_cast<double>(a->GetIdx() - 1));
+              out.push_back(static_cast<double>(b->GetIdx() - 1));
+              out.push_back(static_cast<double>(c->GetIdx() - 1));
+              out.push_back(force);
+              n += 1.0;
+            }
+            if (atoi(a->GetType()) == oopv[idx].b) {
+              out.push_back(static_cast<double>(a->GetIdx() - 1));
+              out.push_back(static_cast<double>(d->GetIdx() - 1));
+              out.push_back(static_cast<double>(b->GetIdx() - 1));
+              out.push_back(static_cast<double>(c->GetIdx() - 1));
+              out.push_back(force);
+              n += 1.0;
+            }
+            if (atoi(c->GetType()) == oopv[idx].b) {
+              out.push_back(static_cast<double>(c->GetIdx() - 1));
+              out.push_back(static_cast<double>(a->GetIdx() - 1));
+              out.push_back(static_cast<double>(b->GetIdx() - 1));
+              out.push_back(static_cast<double>(d->GetIdx() - 1));
+              out.push_back(force);
+              n += 1.0;
+            }
+          }
+        }
+        out[pos] = n;
+      }
+
+      // Van der Waals (Buckingham exp-6): eps·(a·exp(−b·rab/rr) − c·(rr/rab)⁶).
+      {
+        size_t pos = out.size();
+        out.push_back(0.0);
+        double n = 0.0;
+        FOR_PAIRS_OF_MOL (p, m) {
+          OpenBabel::OBAtom *a = m.GetAtom((*p)[0]);
+          OpenBabel::OBAtom *b = m.GetAtom((*p)[1]);
+          if (!a || !b) continue;
+          double rr, eps;
+          OpenBabel::OBFFParameter *pr =
+              mm2->RsParam(atoi(a->GetType()), atoi(b->GetType()), 0, 0, 5);
+          if (pr) {
+            rr = pr->_dpar[0];
+            eps = pr->_dpar[1];
+          } else {
+            OpenBabel::OBFFParameter *pa = mm2->RsParam(atoi(a->GetType()), 0, 0, 0, 6);
+            OpenBabel::OBFFParameter *pb = mm2->RsParam(atoi(b->GetType()), 0, 0, 0, 6);
+            if (!pa || !pb) continue;
+            rr = pa->_dpar[0] + pb->_dpar[0];
+            eps = (pa->_dpar[1] + pb->_dpar[1]) / 2.0;
+          }
+          out.push_back(static_cast<double>(a->GetIdx() - 1));
+          out.push_back(static_cast<double>(b->GetIdx() - 1));
+          out.push_back(rr);
+          out.push_back(eps);
+          n += 1.0;
+        }
+        out[pos] = n;
+      }
+
+      // Electrostatic: bond dipole–dipole. Mirrors MM2's nested bond loop and
+      // its `idx > 0` lookup guard (dipole param at index 0 is skipped).
+      {
+        size_t pos = out.size();
+        out.push_back(0.0);
+        double n = 0.0;
+        std::vector<OpenBabel::OBFFParameter> &dip = mm2->RsVec(7);
+        FOR_BONDS_OF_MOL (bond, m) {
+          OpenBabel::OBAtom *a = bond->GetBeginAtom();
+          OpenBabel::OBAtom *b = bond->GetEndAtom();
+          int idx = mm2->RsParamIdx(atoi(a->GetType()), atoi(b->GetType()), 0, 0, 7);
+          if (idx <= 0) continue;
+          double dipole1 = dip[idx]._dpar[0];
+          FOR_BONDS_OF_MOL (bond2, m) {
+            if (&*bond == &*bond2) continue;
+            if (bond2->GetIdx() < bond->GetIdx()) continue;
+            OpenBabel::OBAtom *c = bond2->GetBeginAtom();
+            OpenBabel::OBAtom *d = bond2->GetEndAtom();
+            int idx2 = mm2->RsParamIdx(atoi(c->GetType()), atoi(d->GetType()), 0, 0, 7);
+            if (idx2 <= 0) continue;
+            double dipole2 = dip[idx2]._dpar[0];
+            out.push_back(static_cast<double>(a->GetIdx() - 1));
+            out.push_back(static_cast<double>(b->GetIdx() - 1));
+            out.push_back(static_cast<double>(c->GetIdx() - 1));
+            out.push_back(static_cast<double>(d->GetIdx() - 1));
+            out.push_back(dipole1);
+            out.push_back(dipole2);
+            n += 1.0;
+          }
+        }
+        out[pos] = n;
+      }
+    } else {
+      out.clear();
+      out.push_back(0.0);  // unknown / no Rust exporter yet
+    }
+  } catch (...) {
+    out.clear();
+    out.push_back(0.0);
+  }
+  return out;
+}
+
+rust::Vec<double> ff_energy_components(const Molecule &mol, rust::Str ff_id) {
+  rust::Vec<double> out;
+  try {
+    std::string id = to_std(ff_id);
+    for (char &ch : id) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
+    OpenBabel::OBForceField *ff = find_forcefield(to_std(ff_id));
+    if (!ff) {
+      out.push_back(0.0);
+      return out;
+    }
+    OpenBabel::OBMol work = mol.mol;
+    if (!ff->Setup(work)) {
+      out.push_back(0.0);
+      return out;
+    }
+    if (id == "MMFF94" || id == "MMFF94S") {
+      // The public E_* accessors return each component in final units at the
+      // molecule's current geometry (gradients=false = energy only).
+      auto *g = static_cast<OpenBabel::OBForceFieldMMFF94 *>(ff);
+      out.push_back(1.0);  // format_ok
+      out.push_back(g->E_Bond(false));
+      out.push_back(g->E_Angle(false));
+      out.push_back(g->E_StrBnd(false));
+      out.push_back(g->E_Torsion(false));
+      out.push_back(g->E_OOP(false));
+      out.push_back(g->E_VDW(false));
+      out.push_back(g->E_Electrostatic(false));
+    } else {
+      out.clear();
+      out.push_back(0.0);  // no component breakdown for this force field yet
+    }
+  } catch (...) {
+    out.clear();
+    out.push_back(0.0);
   }
   return out;
 }

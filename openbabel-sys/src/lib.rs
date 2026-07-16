@@ -289,6 +289,33 @@ pub mod ffi {
         /// All atom coordinates flattened as `[x0,y0,z0, x1,y1,z1, …]`.
         fn mol_coordinates(mol: &Molecule) -> Vec<f64>;
 
+        /// Export a force field's precomputed energy terms for `mol` as a flat,
+        /// self-describing `f64` buffer, so the Rust numeric core can evaluate
+        /// energy/gradient and minimize without calling back into OpenBabel.
+        ///
+        /// OpenBabel does the perception, atom typing, and per-term coefficient
+        /// precomputation (once, under the global lock); this reads out the
+        /// resulting term list. Layout (all values as `f64`, atom indices
+        /// 0-based):
+        /// `[format_ok, n_atoms,
+        ///   n_bonds,   (a,b,kb,r0)*,
+        ///   n_angles,  (a,b,c,ka,theta0,c0,c1,c2,coord,n)*,
+        ///   n_tors,    (a,b,c,d,V,n,cosNPhi0)*,
+        ///   n_oops,    (a,b,c,d,koop,c0,c1,c2)*,
+        ///   n_vdws,    (a,b,kab,kaSquared)*,
+        ///   n_elecs,   (a,b,qq)*]`.
+        /// `format_ok` is 0 when `ff_id` is unknown or its exporter is not yet
+        /// implemented (only `"UFF"` is supported so far).
+        fn ff_export_terms(mol: &Molecule, ff_id: &str) -> Vec<f64>;
+
+        /// OpenBabel's own per-component energies for `mol` under `ff_id`, at the
+        /// molecule's current geometry: `[format_ok, bond, angle, strbnd,
+        /// torsion, oop, vdw, elec]` (components absent from a force field are
+        /// 0). A parity reference for the Rust numeric core, used in tests to
+        /// pinpoint which energy term diverges. `format_ok` is 0 for an unknown
+        /// force field or one without a component breakdown here.
+        fn ff_energy_components(mol: &Molecule, ff_id: &str) -> Vec<f64>;
+
         // Force-field constraints (atom indices 0-based).
         /// Create an empty constraint set.
         fn constraints_new() -> UniquePtr<Constraints>;

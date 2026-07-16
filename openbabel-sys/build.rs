@@ -55,6 +55,10 @@ fn main() {
     // Make the bundled InChI library linkable on MSVC (see fn docs).
     ensure_inchi_auxinfo_stubs(&ob_src);
 
+    // Add read-only accessors to the force-field headers so the Rust term
+    // exporter can read their precomputed calculation vectors (see fn docs).
+    ensure_ff_accessors(&ob_src);
+
     // 1. Build + install OpenBabel into OUT_DIR.
     //
     // We force a Release build regardless of the cargo profile so the C++ side
@@ -178,6 +182,11 @@ fn main() {
         .include("shim")
         .include(&include_dir)
         .include(&eigen_dir)
+        // OpenBabel's concrete force-field headers (e.g. forcefielduff.h) live
+        // in the source tree, not the installed headers. The Rust term exporter
+        // (ff_export_terms) includes one to read a force field's precomputed
+        // calculation vectors; put that directory on the shim's include path.
+        .include(ob_src.join("src").join("forcefields"))
         .std("c++17");
     if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
         build
@@ -389,6 +398,135 @@ INCHI_API void INCHI_DECL Free_std_inchi_Input(inchi_Input *pInp)\n\
     if !up_to_date {
         fs::write(&stub_path, stub).expect("write InChI AuxInfo stub source");
     }
+}
+
+/// Inject read-only accessors for each force field's precomputed calculation
+/// vectors into its header, so the shim's `ff_export_terms` can read them.
+///
+/// The `_bondcalculations` / … vectors are `protected` members of the concrete
+/// `OBForceFieldXXX` classes. Rather than reimplement OpenBabel's parameter
+/// setup in Rust, we let OpenBabel precompute the terms and read them out — but
+/// that needs access. We add `public` **inline** accessors returning const
+/// references; being inline, they add no out-of-line symbols and do not change
+/// the class layout or vtable, so the already-built OpenBabel library's ABI is
+/// unaffected (the accessors are compiled only into the shim translation unit).
+///
+/// Idempotent (keyed on a marker), matching the write-if-changed style of
+/// [`ensure_inchi_auxinfo_stubs`]. A fresh `git submodule update` resets the
+/// headers; the next build re-applies them. New force fields add an entry here.
+fn ensure_ff_accessors(ob_src: &Path) {
+    let dir = ob_src.join("src").join("forcefields");
+
+    patch_ff_header(
+        &dir.join("forcefielduff.h"),
+        "  }; // class OBForceFieldUFF",
+        "\
+    const std::vector<OBFFBondCalculationUFF>&          RsBondCalcs()    const { return _bondcalculations; }\n\
+    const std::vector<OBFFAngleCalculationUFF>&         RsAngleCalcs()   const { return _anglecalculations; }\n\
+    const std::vector<OBFFTorsionCalculationUFF>&       RsTorsionCalcs() const { return _torsioncalculations; }\n\
+    const std::vector<OBFFOOPCalculationUFF>&           RsOopCalcs()     const { return _oopcalculations; }\n\
+    const std::vector<OBFFVDWCalculationUFF>&           RsVdwCalcs()     const { return _vdwcalculations; }\n\
+    const std::vector<OBFFElectrostaticCalculationUFF>& RsElecCalcs()    const { return _electrostaticcalculations; }\n",
+    );
+
+    patch_ff_header(
+        &dir.join("forcefieldghemical.h"),
+        "  }; // class OBForceFieldGhemical",
+        "\
+    const std::vector<OBFFBondCalculationGhemical>&          RsBondCalcs()    const { return _bondcalculations; }\n\
+    const std::vector<OBFFAngleCalculationGhemical>&         RsAngleCalcs()   const { return _anglecalculations; }\n\
+    const std::vector<OBFFTorsionCalculationGhemical>&       RsTorsionCalcs() const { return _torsioncalculations; }\n\
+    const std::vector<OBFFVDWCalculationGhemical>&           RsVdwCalcs()     const { return _vdwcalculations; }\n\
+    const std::vector<OBFFElectrostaticCalculationGhemical>& RsElecCalcs()    const { return _electrostaticcalculations; }\n",
+    );
+
+    patch_ff_header(
+        &dir.join("forcefieldgaff.h"),
+        "  }; // class OBForceFieldGaff",
+        "\
+    const std::vector<OBFFBondCalculationGaff>&          RsBondCalcs()    const { return _bondcalculations; }\n\
+    const std::vector<OBFFAngleCalculationGaff>&         RsAngleCalcs()   const { return _anglecalculations; }\n\
+    const std::vector<OBFFTorsionCalculationGaff>&       RsTorsionCalcs() const { return _torsioncalculations; }\n\
+    const std::vector<OBFFOOPCalculationGaff>&           RsOopCalcs()     const { return _oopcalculations; }\n\
+    const std::vector<OBFFVDWCalculationGaff>&           RsVdwCalcs()     const { return _vdwcalculations; }\n\
+    const std::vector<OBFFElectrostaticCalculationGaff>& RsElecCalcs()    const { return _electrostaticcalculations; }\n",
+    );
+
+    // forcefieldmmff94.h holds both MMFF94 and MMFF94s (one class, `mmff94s`
+    // flag); its class-closing marker is an upstream copy-paste of MM2's, but is
+    // unique within this file. MMFF94 adds a stretch-bend calculation vector.
+    patch_ff_header(
+        &dir.join("forcefieldmmff94.h"),
+        "  }; // class OBForceFieldMM2",
+        "\
+    const std::vector<OBFFBondCalculationMMFF94>&          RsBondCalcs()    const { return _bondcalculations; }\n\
+    const std::vector<OBFFAngleCalculationMMFF94>&         RsAngleCalcs()   const { return _anglecalculations; }\n\
+    const std::vector<OBFFStrBndCalculationMMFF94>&        RsStrBndCalcs()  const { return _strbndcalculations; }\n\
+    const std::vector<OBFFTorsionCalculationMMFF94>&       RsTorsionCalcs() const { return _torsioncalculations; }\n\
+    const std::vector<OBFFOOPCalculationMMFF94>&           RsOopCalcs()     const { return _oopcalculations; }\n\
+    const std::vector<OBFFVDWCalculationMMFF94>&           RsVdwCalcs()     const { return _vdwcalculations; }\n\
+    const std::vector<OBFFElectrostaticCalculationMMFF94>& RsElecCalcs()    const { return _electrostaticcalculations; }\n",
+    );
+
+    // MM2 predates the OBFFCalculation architecture: it has no calc vectors and
+    // resolves each term's parameters inline during energy evaluation. So the
+    // exporter needs the raw parameter tables, the global unit constants, and a
+    // forwarder to OpenBabel's (protected) parameter lookup — the shim then
+    // replicates MM2's own iteration to emit resolved terms.
+    patch_ff_header(
+        &dir.join("forcefieldmm2.h"),
+        "  }; // class OBForceFieldMM2",
+        "\
+    OBMol& RsMol() { return _mol; }\n\
+    double RsBondUnit() const { return bondunit; }\n\
+    double RsBondCubic() const { return bond_cubic; }\n\
+    double RsBondQuartic() const { return bond_quartic; }\n\
+    double RsAngleUnit() const { return angleunit; }\n\
+    double RsAngleSextic() const { return angle_sextic; }\n\
+    double RsStretchBendUnit() const { return stretchbendunit; }\n\
+    double RsTorsionUnit() const { return torsionunit; }\n\
+    double RsOutPlaneBendUnit() const { return outplanebendunit; }\n\
+    double RsAExpterm() const { return a_expterm; }\n\
+    double RsBExpterm() const { return b_expterm; }\n\
+    double RsCExpterm() const { return c_expterm; }\n\
+    double RsDielectric() const { return dielectric; }\n\
+    std::vector<OBFFParameter>& RsVec(int which) {\n\
+      switch (which) {\n\
+      case 0: return _ffbondparams;\n\
+      case 1: return _ffangleparams;\n\
+      case 2: return _ffstretchbendparams;\n\
+      case 3: return _fftorsionparams;\n\
+      case 4: return _ffoutplanebendparams;\n\
+      case 5: return _ffvdwprparams;\n\
+      case 6: return _ffvdwparams;\n\
+      default: return _ffdipoleparams;\n\
+      }\n\
+    }\n\
+    OBFFParameter* RsParam(int a, int b, int c, int d, int which) { return GetParameter(a, b, c, d, RsVec(which)); }\n\
+    int RsParamIdx(int a, int b, int c, int d, int which) { return GetParameterIdx(a, b, c, d, RsVec(which)); }\n",
+    );
+}
+
+/// Insert a `public:` accessor block just before `marker` (a class's closing
+/// brace) in `header`, unless already present. See [`ensure_ff_accessors`].
+fn patch_ff_header(header: &Path, marker: &str, accessors: &str) {
+    let Ok(src) = fs::read_to_string(header) else {
+        return; // source not present — nothing to patch.
+    };
+    if src.contains("@generated by openbabel-sys/build.rs") {
+        return; // already patched (marker present in every generated block)
+    }
+    let Some(pos) = src.find(marker) else {
+        return; // upstream layout changed; skip rather than corrupt the header.
+    };
+    let block = format!(
+        "  public:\n    // @generated by openbabel-sys/build.rs — read-only accessors for the\n    // Rust force-field term exporter (ff_export_terms). Inline: no ABI change.\n{accessors}\n"
+    );
+    let mut patched = String::with_capacity(src.len() + block.len());
+    patched.push_str(&src[..pos]);
+    patched.push_str(&block);
+    patched.push_str(&src[pos..]);
+    fs::write(header, patched).expect("patch force-field header with Rust accessors");
 }
 
 /// Copy `src` to `dst`, skipping the write if `dst` is already up to date.

@@ -6,6 +6,16 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Async optimization wrappers (`Molecule::optimize_geometry_rs_async`). Pulls in a
+# Tokio runtime; the heavy minimization runs on its blocking pool. Off by
+# default so the core bindings stay dependency-light.
+async = ["dep:tokio"]
+
 [dependencies]
 openbabel-sys = { path = "../openbabel-sys", version = "0.1.0" }
 cxx.workspace = true
+tokio = { version = "1", optional = true, default-features = false, features = ["rt"] }
+
+[dev-dependencies]
+tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "macros"] }
