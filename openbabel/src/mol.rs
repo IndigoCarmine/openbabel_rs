@@ -284,6 +284,41 @@ impl Molecule {
         with_ob(|| ffi::mol_has_nonzero_coords(self.as_inner()))
     }
 
+    /// Override the cached aromaticity-perception flag (the setter behind
+    /// [`has_aromatic_perceived`](Self::has_aromatic_perceived)). Pass `true` to
+    /// mark aromaticity as already perceived — OpenBabel then trusts the current
+    /// per-atom/bond aromatic flags instead of re-running its aromaticity typer —
+    /// or `false` to clear it and force re-perception the next time it is needed.
+    pub fn set_aromatic_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_aromatic_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached SSSR (ring-perception) flag (the setter behind
+    /// [`has_sssr_perceived`](Self::has_sssr_perceived)). `false` forces ring
+    /// perception to re-run the next time rings are queried.
+    pub fn set_sssr_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_sssr_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached ring-atom/bond-membership flag (the setter behind
+    /// [`has_ring_atoms_perceived`](Self::has_ring_atoms_perceived)).
+    pub fn set_ring_atoms_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_ring_atoms_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached chain/residue-perception flag (the setter behind
+    /// [`has_chains_perceived`](Self::has_chains_perceived)).
+    pub fn set_chains_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_chains_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached "hydrogens added" flag (the setter behind
+    /// [`has_hydrogens_added`](Self::has_hydrogens_added)). This only sets the
+    /// bookkeeping flag; it does not add or remove any atoms.
+    pub fn set_hydrogens_added(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_hydrogens_added(self.inner.pin_mut(), value));
+    }
+
     /// Evaluate a numeric descriptor plugin by id (e.g. `"logP"`, `"TPSA"`,
     /// `"MR"`, `"MW"`). Returns `None` if OpenBabel has no such descriptor.
     pub fn descriptor(&self, id: &str) -> Option<f64> {
@@ -573,6 +608,40 @@ impl Molecule {
     /// indices.
     pub fn torsion(&self, i: u32, j: u32, k: u32, l: u32) -> f64 {
         with_ob(|| ffi::mol_torsion(self.as_inner(), i + 1, j + 1, k + 1, l + 1))
+    }
+
+    /// Every valence angle in the molecule, as `[vertex, a, b]` triples of
+    /// 0-based atom indices — the connectivity enumeration OpenBabel builds with
+    /// `OBMol::FindAngles` (`OBAngleData`). Only heavy atoms are considered
+    /// (hydrogens are skipped), and each angle appears once. Use
+    /// [`angle`](Self::angle) to measure the geometric value of one.
+    ///
+    /// The result is cached on the molecule, so later structural edits are not
+    /// reflected until the cache is cleared (e.g. via a fresh [`clone`]).
+    ///
+    /// [`clone`]: Self::clone
+    pub fn find_angles(&self) -> Vec<[u32; 3]> {
+        let flat = with_ob(|| ffi::mol_find_angles(self.as_inner()));
+        flat.chunks_exact(3)
+            .map(|c| [c[0], c[1], c[2]])
+            .collect()
+    }
+
+    /// Every torsion in the molecule, as `[a, b, c, d]` quads of 0-based atom
+    /// indices — the connectivity enumeration OpenBabel builds with
+    /// `OBMol::FindTorsions` (`OBTorsionData`), one quad per rotatable-bond
+    /// arrangement around each heavy-atom central bond (hydrogens are skipped).
+    /// Use [`torsion`](Self::torsion) to measure the dihedral value of one.
+    ///
+    /// The result is cached on the molecule, so later structural edits are not
+    /// reflected until the cache is cleared (e.g. via a fresh [`clone`]).
+    ///
+    /// [`clone`]: Self::clone
+    pub fn find_torsions(&self) -> Vec<[u32; 4]> {
+        let flat = with_ob(|| ffi::mol_find_torsions(self.as_inner()));
+        flat.chunks_exact(4)
+            .map(|c| [c[0], c[1], c[2], c[3]])
+            .collect()
     }
 
     /// Remove disconnected fragments (e.g. counterions) smaller than

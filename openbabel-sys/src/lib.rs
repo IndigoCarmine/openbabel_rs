@@ -475,6 +475,21 @@ pub mod ffi {
         fn mol_has_nonzero_coords(mol: &Molecule) -> bool;
         fn mol_add_hydrogens_to_atom(mol: Pin<&mut Molecule>, idx: u32) -> bool;
         fn mol_delete_hydrogens_of_atom(mol: Pin<&mut Molecule>, idx: u32) -> bool;
+
+        // Structured torsion / angle data: flat 0-based atom indices (3 per
+        // angle [vertex,a,b]; 4 per torsion [a,b,c,d]).
+        fn mol_find_angles(mol: &Molecule) -> Vec<u32>;
+        fn mol_find_torsions(mol: &Molecule) -> Vec<u32>;
+
+        // Perception-state flag setters (the setter side of the Has* queries).
+        fn mol_set_aromatic_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_sssr_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_ring_atoms_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_chains_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_hydrogens_added(mol: Pin<&mut Molecule>, value: bool);
+
+        // Axial / equatorial ring position (atom idx 1-based).
+        fn atom_is_axial(mol: &Molecule, idx: u32) -> bool;
     }
 }
 

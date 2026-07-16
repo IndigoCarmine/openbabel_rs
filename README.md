@@ -129,14 +129,17 @@ Element data & extended queries:
   `covalent_radius` / `vdw_radius` / `max_bonds`.
 - Richer atom queries: `type_name`, `isotope`, `atomic_mass` / `exact_mass`,
   `spin_multiplicity`, `heavy_degree` / `hetero_degree`, `is_chiral` /
-  `is_heteroatom` / `is_metal` / `is_polar_hydrogen`, ring membership
+  `is_heteroatom` / `is_metal` / `is_polar_hydrogen` / `is_axial` (axial vs
+  equatorial on a saturated ring, from 3D geometry), ring membership
   (`ring_count`, `smallest_ring_size`, `is_in_ring_size`).
 - Richer bond queries: `length`, `equilibrium_length`, `is_rotor`, `is_amide` /
   `is_ester` / `is_carbonyl` / `is_closure`.
 - Molecule extras: `num_heavy_atoms`, `num_rings`, `num_rotatable_bonds`,
   `spaced_formula`, `spin_multiplicity`, `center`, `distance` / `angle` /
-  `torsion` measurements, `clone`, `strip_salts`, `separate` (into fragments),
-  and string `property` / `set_property` metadata.
+  `torsion` measurements, `find_angles` / `find_torsions` (enumerate every
+  heavy-atom valence angle / torsion as atom-index tuples, from OpenBabel's
+  `OBAngleData` / `OBTorsionData`), `clone`, `strip_salts`, `separate` (into
+  fragments), and string `property` / `set_property` metadata.
 
 Residues (biopolymer / PDB substructure):
 
@@ -181,7 +184,11 @@ Construction & editing:
   `remove_hydrogens_of_atom` edit the hydrogens on one atom, and the
   `has_hydrogens_added` / `has_sssr_perceived` / `has_aromatic_perceived` /
   `has_chains_perceived` / `has_ring_atoms_perceived` / `has_nonzero_coords`
-  flags report what OpenBabel has already perceived or built.
+  flags report what OpenBabel has already perceived or built. The matching
+  `set_hydrogens_added` / `set_sssr_perceived` / `set_aromatic_perceived` /
+  `set_chains_perceived` / `set_ring_atoms_perceived` setters override those
+  cached flags — mark a stage done to skip it, or clear it to force
+  re-perception.
 
 Rings & multi-molecule I/O:
 

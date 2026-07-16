@@ -541,4 +541,29 @@ bool mol_has_nonzero_coords(const Molecule &mol);
 bool mol_add_hydrogens_to_atom(Molecule &mol, uint32_t idx);
 bool mol_delete_hydrogens_of_atom(Molecule &mol, uint32_t idx);
 
+// --- Structured torsion / angle data (OBTorsionData / OBAngleData) ----------
+// Enumerate every heavy-atom (non-hydrogen) valence angle / torsion via
+// OBMol::FindAngles / FindTorsions, then marshal the resulting OBAngleData /
+// OBTorsionData back out. The returned vector is flat with 0-based atom
+// indices: mol_find_angles packs 3 per angle ([vertex, a, b]); mol_find_torsions
+// packs 4 per torsion ([a, b, c, d]). Empty if there are no angles / torsions.
+rust::Vec<uint32_t> mol_find_angles(const Molecule &mol);
+rust::Vec<uint32_t> mol_find_torsions(const Molecule &mol);
+
+// --- Perception-state flag setters -----------------------------------------
+// Override OpenBabel's cached perception flags (the setter side of the Has*
+// queries): pass true to mark a stage as already done (so OpenBabel skips it),
+// false to clear it (forcing re-perception next time it is needed).
+void mol_set_aromatic_perceived(Molecule &mol, bool value);
+void mol_set_sssr_perceived(Molecule &mol, bool value);
+void mol_set_ring_atoms_perceived(Molecule &mol, bool value);
+void mol_set_chains_perceived(Molecule &mol, bool value);
+void mol_set_hydrogens_added(Molecule &mol, bool value);
+
+// --- Axial / equatorial ring position (atom idx 1-based) -------------------
+// Whether atom `idx` sits in an axial position on a ring, judged from the 3D
+// dihedral to the ring (OBAtom::IsAxial). Needs 3D coordinates; false without
+// them or for a non-ring substituent.
+bool atom_is_axial(const Molecule &mol, uint32_t idx);
+
 }  // namespace ob_shim

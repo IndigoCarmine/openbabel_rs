@@ -172,6 +172,17 @@ impl<'mol> Atom<'mol> {
         crate::with_ob(|| ffi::atom_is_polar_hydrogen(self.mol, self.ob_idx))
     }
 
+    /// Whether this atom occupies an axial position on a saturated ring, as
+    /// opposed to equatorial (OpenBabel's `OBAtom::IsAxial`).
+    ///
+    /// The test is geometric: it inspects the dihedral this atom makes with an
+    /// adjacent sp³ ring system, so it needs a 3D structure and a ring context.
+    /// It returns `false` without 3D coordinates, or when the atom is not a
+    /// substituent on such a ring.
+    pub fn is_axial(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_axial(self.mol, self.ob_idx))
+    }
+
     /// Number of rings this atom belongs to.
     pub fn ring_count(&self) -> u32 {
         crate::with_ob(|| ffi::atom_member_of_ring_count(self.mol, self.ob_idx))

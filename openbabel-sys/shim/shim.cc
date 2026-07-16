@@ -1917,4 +1917,69 @@ bool mol_delete_hydrogens_of_atom(Molecule &mol, uint32_t idx) {
   return a ? mol.mol.DeleteHydrogens(a) : false;
 }
 
+// --- Structured torsion / angle data (OBTorsionData / OBAngleData) ----------
+
+// Enumerate all heavy-atom valence angles as flat [vertex, a, b, ...] (0-based).
+rust::Vec<uint32_t> mol_find_angles(const Molecule &mol) {
+  rust::Vec<uint32_t> out;
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    m.FindAngles();  // populates (once, cached) an OBAngleData
+    OpenBabel::OBAngleData *ad = dynamic_cast<OpenBabel::OBAngleData *>(
+        m.GetData(OpenBabel::OBGenericDataType::AngleData));
+    if (!ad) return out;
+    std::vector<std::vector<unsigned int>> angles;  // each: [vertex, a, b], 0-based
+    if (!ad->FillAngleArray(angles)) return out;
+    for (const std::vector<unsigned int> &triple : angles)
+      for (unsigned int v : triple) out.push_back(static_cast<uint32_t>(v));
+    return out;
+  } catch (...) {
+    return out;
+  }
+}
+
+// Enumerate all heavy-atom torsions as flat [a, b, c, d, ...] (0-based).
+rust::Vec<uint32_t> mol_find_torsions(const Molecule &mol) {
+  rust::Vec<uint32_t> out;
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    m.FindTorsions();  // populates (once, cached) an OBTorsionData
+    OpenBabel::OBTorsionData *td = dynamic_cast<OpenBabel::OBTorsionData *>(
+        m.GetData(OpenBabel::OBGenericDataType::TorsionData));
+    if (!td) return out;
+    std::vector<std::vector<unsigned int>> torsions;  // each: [a, b, c, d], 0-based
+    if (!td->FillTorsionArray(torsions)) return out;
+    for (const std::vector<unsigned int> &quad : torsions)
+      for (unsigned int v : quad) out.push_back(static_cast<uint32_t>(v));
+    return out;
+  } catch (...) {
+    return out;
+  }
+}
+
+// --- Perception-state flag setters -----------------------------------------
+
+void mol_set_aromatic_perceived(Molecule &mol, bool value) {
+  mol.mol.SetAromaticPerceived(value);
+}
+void mol_set_sssr_perceived(Molecule &mol, bool value) {
+  mol.mol.SetSSSRPerceived(value);
+}
+void mol_set_ring_atoms_perceived(Molecule &mol, bool value) {
+  mol.mol.SetRingAtomsAndBondsPerceived(value);
+}
+void mol_set_chains_perceived(Molecule &mol, bool value) {
+  mol.mol.SetChainsPerceived(value);
+}
+void mol_set_hydrogens_added(Molecule &mol, bool value) {
+  mol.mol.SetHydrogensAdded(value);
+}
+
+// --- Axial / equatorial ring position --------------------------------------
+
+bool atom_is_axial(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsAxial() : false;
+}
+
 }  // namespace ob_shim
