@@ -261,6 +261,14 @@ impl<'mol> Atom<'mol> {
     pub fn explicit_hydrogen_count(&self) -> u32 {
         crate::with_ob(|| ffi::atom_explicit_h_count(self.mol, self.ob_idx))
     }
+
+    /// A string annotation previously attached under `key` (see
+    /// [`AtomMut::set_data`]), or `None` if this atom has none.
+    pub fn data(&self, key: &str) -> Option<String> {
+        let mut ok = false;
+        let value = crate::with_ob(|| ffi::atom_get_data(self.mol, self.ob_idx, key, &mut ok));
+        ok.then_some(value)
+    }
 }
 
 impl std::fmt::Debug for Atom<'_> {
@@ -338,6 +346,14 @@ impl<'m> AtomMut<'m> {
     /// Set the number of implicit hydrogens.
     pub fn set_implicit_hydrogens(&mut self, count: u32) -> &mut Self {
         crate::with_ob(|| ffi::atom_set_implicit_h(self.mol.as_inner_pin_mut(), self.ob_idx, count));
+        self
+    }
+
+    /// Attach (or replace) an arbitrary string annotation under `key`, readable
+    /// later with [`Atom::data`]. Useful for carrying per-atom metadata through
+    /// a workflow.
+    pub fn set_data(&mut self, key: &str, value: &str) -> &mut Self {
+        crate::with_ob(|| ffi::atom_set_data(self.mol.as_inner_pin_mut(), self.ob_idx, key, value));
         self
     }
 }

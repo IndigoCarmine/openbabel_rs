@@ -506,4 +506,11 @@ rust::Vec<uint32_t> mol_largest_fragment(const Molecule &mol);
 void mol_set_total_charge(Molecule &mol, int32_t charge);
 void mol_set_total_spin(Molecule &mol, uint32_t spin);
 
+// --- Per-atom / per-bond string data (OBPairData) -------------------------
+// atom idx is 1-based, bond idx is 0-based. get sets ok=false when absent.
+void atom_set_data(Molecule &mol, uint32_t idx, rust::Str key, rust::Str value);
+rust::String atom_get_data(const Molecule &mol, uint32_t idx, rust::Str key, bool &ok);
+void bond_set_data(Molecule &mol, uint32_t idx, rust::Str key, rust::Str value);
+rust::String bond_get_data(const Molecule &mol, uint32_t idx, rust::Str key, bool &ok);
+
 }  // namespace ob_shim

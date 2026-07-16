@@ -444,6 +444,12 @@ pub mod ffi {
         fn mol_largest_fragment(mol: &Molecule) -> Vec<u32>;
         fn mol_set_total_charge(mol: Pin<&mut Molecule>, charge: i32);
         fn mol_set_total_spin(mol: Pin<&mut Molecule>, spin: u32);
+
+        // Per-atom / per-bond string data (atom idx 1-based, bond idx 0-based).
+        fn atom_set_data(mol: Pin<&mut Molecule>, idx: u32, key: &str, value: &str);
+        fn atom_get_data(mol: &Molecule, idx: u32, key: &str, ok: &mut bool) -> String;
+        fn bond_set_data(mol: Pin<&mut Molecule>, idx: u32, key: &str, value: &str);
+        fn bond_get_data(mol: &Molecule, idx: u32, key: &str, ok: &mut bool) -> String;
     }
 }
 

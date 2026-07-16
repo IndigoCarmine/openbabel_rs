@@ -1751,4 +1751,68 @@ void mol_set_total_spin(Molecule &mol, uint32_t spin) {
   mol.mol.SetTotalSpinMultiplicity(static_cast<unsigned int>(spin));
 }
 
+// --- Per-atom / per-bond string data (OBPairData) -------------------------
+
+namespace {
+// Attach (replacing any existing) a key/value string pair to an OBBase.
+void set_pair_data(OpenBabel::OBBase *b, const std::string &key, const std::string &value) {
+  if (b->HasData(key)) b->DeleteData(key);
+  OpenBabel::OBPairData *pd = new OpenBabel::OBPairData();
+  pd->SetAttribute(key);
+  pd->SetValue(value);
+  b->SetData(pd);
+}
+// Read a key's string value from an OBBase; ok=false if absent / not a pair.
+rust::String get_pair_data(OpenBabel::OBBase *b, const std::string &key, bool &ok) {
+  OpenBabel::OBPairData *pd = dynamic_cast<OpenBabel::OBPairData *>(b->GetData(key));
+  if (!pd) {
+    ok = false;
+    return rust::String();
+  }
+  ok = true;
+  return rust::String(pd->GetValue());
+}
+}  // namespace
+
+void atom_set_data(Molecule &mol, uint32_t idx, rust::Str key, rust::Str value) {
+  try {
+    OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+    if (a) set_pair_data(a, to_std(key), to_std(value));
+  } catch (...) {
+  }
+}
+rust::String atom_get_data(const Molecule &mol, uint32_t idx, rust::Str key, bool &ok) {
+  try {
+    OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+    if (!a) {
+      ok = false;
+      return rust::String();
+    }
+    return get_pair_data(a, to_std(key), ok);
+  } catch (...) {
+    ok = false;
+    return rust::String();
+  }
+}
+void bond_set_data(Molecule &mol, uint32_t idx, rust::Str key, rust::Str value) {
+  try {
+    OpenBabel::OBBond *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+    if (b) set_pair_data(b, to_std(key), to_std(value));
+  } catch (...) {
+  }
+}
+rust::String bond_get_data(const Molecule &mol, uint32_t idx, rust::Str key, bool &ok) {
+  try {
+    OpenBabel::OBBond *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+    if (!b) {
+      ok = false;
+      return rust::String();
+    }
+    return get_pair_data(b, to_std(key), ok);
+  } catch (...) {
+    ok = false;
+    return rust::String();
+  }
+}
+
 }  // namespace ob_shim

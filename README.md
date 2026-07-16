@@ -172,6 +172,9 @@ Construction & editing:
   `find_children` returns the atoms that move with it, `largest_fragment_atoms`
   isolates the main fragment from counter-ions, and `set_total_charge` /
   `set_total_spin_multiplicity` set the molecule-level values.
+- Arbitrary annotations: attach string key/value data to a molecule
+  (`property` / `set_property`), an atom (`Atom::data` / `AtomMut::set_data`), or
+  a bond (`Bond::data` / `BondMut::set_data`).
 
 Rings & multi-molecule I/O:
 

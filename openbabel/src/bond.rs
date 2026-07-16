@@ -96,6 +96,14 @@ impl<'mol> Bond<'mol> {
             })
         }
     }
+
+    /// A string annotation previously attached under `key` (see
+    /// [`BondMut::set_data`]), or `None` if this bond has none.
+    pub fn data(&self, key: &str) -> Option<String> {
+        let mut ok = false;
+        let value = crate::with_ob(|| ffi::bond_get_data(self.mol, self.ob_idx, key, &mut ok));
+        ok.then_some(value)
+    }
 }
 
 impl std::fmt::Debug for Bond<'_> {
@@ -140,5 +148,12 @@ impl<'m> BondMut<'m> {
     /// the begin atom fixed. Returns `false` if the bond is invalid.
     pub fn set_length(&mut self, length: f64) -> bool {
         crate::with_ob(|| ffi::bond_set_length(self.mol.as_inner_pin_mut(), self.ob_idx, length))
+    }
+
+    /// Attach (or replace) an arbitrary string annotation under `key`, readable
+    /// later with [`Bond::data`].
+    pub fn set_data(&mut self, key: &str, value: &str) -> &mut Self {
+        crate::with_ob(|| ffi::bond_set_data(self.mol.as_inner_pin_mut(), self.ob_idx, key, value));
+        self
     }
 }
