@@ -2132,4 +2132,63 @@ bool bond_is_double_bond_geometry(const Molecule &mol, uint32_t idx) {
   return b ? b->IsDoubleBondGeometry() : false;
 }
 
+// --- Whole-molecule graph descriptor vectors -------------------------------
+
+rust::Vec<uint32_t> mol_graph_theoretical_distances(const Molecule &mol) {
+  rust::Vec<uint32_t> out;
+  try {
+    std::vector<int> gtd;
+    if (!const_cast<Molecule &>(mol).mol.GetGTDVector(gtd)) return out;
+    for (int v : gtd) out.push_back(static_cast<uint32_t>(v));
+    return out;
+  } catch (...) {
+    return out;
+  }
+}
+rust::Vec<uint32_t> mol_graph_invariants(const Molecule &mol) {
+  rust::Vec<uint32_t> out;
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    std::vector<unsigned int> gi;
+    m.GetGIVector(gi);
+    // GetGIVector sizes the vector to NumAtoms()+1, leaving a trailing unused
+    // entry; return exactly one value per atom.
+    size_t n = m.NumAtoms();
+    for (size_t i = 0; i < n && i < gi.size(); ++i)
+      out.push_back(static_cast<uint32_t>(gi[i]));
+    return out;
+  } catch (...) {
+    return out;
+  }
+}
+rust::Vec<uint32_t> mol_graph_invariant_distances(const Molecule &mol) {
+  rust::Vec<uint32_t> out;
+  try {
+    std::vector<unsigned int> gid;
+    const_cast<Molecule &>(mol).mol.GetGIDVector(gid);
+    for (unsigned int v : gid) out.push_back(static_cast<uint32_t>(v));
+    return out;
+  } catch (...) {
+    return out;
+  }
+}
+
+// --- Ring extras -----------------------------------------------------------
+
+rust::String ring_type(const Molecule &mol, uint32_t ring_idx) {
+  OpenBabel::OBRing *r = ring_at(mol, ring_idx);
+  if (!r) return rust::String();
+  const char *t = r->GetType();
+  return rust::String(t ? t : "");
+}
+uint32_t ring_root_atom(const Molecule &mol, uint32_t ring_idx) {
+  OpenBabel::OBRing *r = ring_at(mol, ring_idx);
+  return r ? static_cast<uint32_t>(r->GetRootAtom()) : 0;  // 1-based, 0 = none
+}
+bool ring_contains_atom(const Molecule &mol, uint32_t ring_idx, uint32_t atom_idx) {
+  OpenBabel::OBRing *r = ring_at(mol, ring_idx);
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, atom_idx));
+  return (r && a) ? r->IsMember(a) : false;
+}
+
 }  // namespace ob_shim

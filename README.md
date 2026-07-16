@@ -204,8 +204,10 @@ Construction & editing:
 Rings & multi-molecule I/O:
 
 - Ring perception (SSSR): `Molecule::rings` / `ring` yield a [`Ring`] with
-  `size`, `atom_indices`, and `is_aromatic`; `lssr_ring_sizes` gives the
-  alternative Large-Set-of-Smallest-Rings sizes.
+  `size`, `atom_indices`, `is_aromatic`, `contains_atom`, `ring_type` (the ring
+  typer's name, e.g. `"benzene"`), and `root_atom` (the heteroatom a heterocycle
+  is anchored on); `lssr_ring_sizes` gives the alternative Large-Set-of-Smallest-
+  Rings sizes.
 - Read or write many molecules at once: `Molecule::parse_many` (every record of
   a multi-SDF, one SMILES per line, …) and the free `write_many`.
 - Read and write files directly: `Molecule::read_file` / `read_file_many` /
@@ -234,7 +236,10 @@ Symmetry & canonical ordering:
 - `Molecule::symmetry_classes` returns a topological symmetry class per atom
   (atoms sharing a value are graph-equivalent), and `canonical_ranks` a
   repeatable, input-order-independent canonical labelling — both via OpenBabel's
-  `OBGraphSym` / canonical-labelling algorithm.
+  `OBGraphSym` / canonical-labelling algorithm. The lower-level graph descriptor
+  vectors are also exposed: `graph_theoretical_distances` (each atom's
+  eccentricity) and `graph_invariants` / `graph_invariant_distances` (the
+  Morgan-style invariants underlying the canonical ranking).
 - `Molecule::substructure_search` finds every unique subgraph-isomorphism mapping
   of a query molecule into this one (exact element/bond-order matching via
   `OBQuery` + VF2), `has_substructure` is the boolean shortcut, and

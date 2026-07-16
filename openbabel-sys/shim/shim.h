@@ -619,4 +619,21 @@ bool bond_is_wedge_or_hash(const Molecule &mol, uint32_t idx);  // 2D stereo, di
 bool bond_is_cis_or_trans(const Molecule &mol, uint32_t idx);   // flagged cis/trans 2D stereo bond
 bool bond_is_double_bond_geometry(const Molecule &mol, uint32_t idx);
 
+// --- Whole-molecule graph descriptor vectors (one value per atom, atom order)
+// GTD: graph-theoretical distance (BFS eccentricity over heavy atoms). GI/GID:
+// graph-invariant labels (the Morgan-style invariants used in canonical
+// ordering). Empty on failure.
+rust::Vec<uint32_t> mol_graph_theoretical_distances(const Molecule &mol);
+rust::Vec<uint32_t> mol_graph_invariants(const Molecule &mol);
+rust::Vec<uint32_t> mol_graph_invariant_distances(const Molecule &mol);
+
+// --- Ring extras (ring_idx 0-based; atom idx 1-based for membership) --------
+// Ring type name from the ring typer (e.g. "benzene"); empty if unperceived.
+rust::String ring_type(const Molecule &mol, uint32_t ring_idx);
+// Root atom index (1-based) OpenBabel assigns to the ring — the heteroatom for
+// heterocycles; 0 for an all-carbon ring or if none applies.
+uint32_t ring_root_atom(const Molecule &mol, uint32_t ring_idx);
+// Whether atom `atom_idx` (1-based) is a member of ring `ring_idx`.
+bool ring_contains_atom(const Molecule &mol, uint32_t ring_idx, uint32_t atom_idx);
+
 }  // namespace ob_shim

@@ -534,6 +534,16 @@ pub mod ffi {
         fn bond_is_wedge_or_hash(mol: &Molecule, idx: u32) -> bool;
         fn bond_is_cis_or_trans(mol: &Molecule, idx: u32) -> bool;
         fn bond_is_double_bond_geometry(mol: &Molecule, idx: u32) -> bool;
+
+        // Whole-molecule graph descriptor vectors (one value per atom).
+        fn mol_graph_theoretical_distances(mol: &Molecule) -> Vec<u32>;
+        fn mol_graph_invariants(mol: &Molecule) -> Vec<u32>;
+        fn mol_graph_invariant_distances(mol: &Molecule) -> Vec<u32>;
+
+        // Ring extras (ring idx 0-based; atom idx 1-based for membership).
+        fn ring_type(mol: &Molecule, ring_idx: u32) -> String;
+        fn ring_root_atom(mol: &Molecule, ring_idx: u32) -> u32;
+        fn ring_contains_atom(mol: &Molecule, ring_idx: u32, atom_idx: u32) -> bool;
     }
 }
 

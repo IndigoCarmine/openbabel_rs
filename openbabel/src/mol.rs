@@ -853,6 +853,30 @@ impl Molecule {
         with_ob(|| ffi::mol_canonical_ranks(self.as_inner()))
     }
 
+    /// Graph-theoretical distance of every atom, in atom order: each atom's
+    /// eccentricity — the number of bonds to the farthest heavy atom reachable
+    /// from it. Terminal atoms have the largest values, central atoms the
+    /// smallest. Backed by OpenBabel's `OBMol::GetGTDVector`.
+    pub fn graph_theoretical_distances(&self) -> Vec<u32> {
+        with_ob(|| ffi::mol_graph_theoretical_distances(self.as_inner()))
+    }
+
+    /// Graph-invariant label of every atom, in atom order — the Morgan-style
+    /// initial invariants OpenBabel derives from local topology
+    /// (`OBMol::GetGIVector`). Atoms in equivalent environments share a value;
+    /// these feed the canonical labelling exposed by
+    /// [`canonical_ranks`](Self::canonical_ranks).
+    pub fn graph_invariants(&self) -> Vec<u32> {
+        with_ob(|| ffi::mol_graph_invariants(self.as_inner()))
+    }
+
+    /// Graph-invariant label of every atom refined by graph-theoretical distance
+    /// (`OBMol::GetGIDVector`), in atom order — a finer variant of
+    /// [`graph_invariants`](Self::graph_invariants).
+    pub fn graph_invariant_distances(&self) -> Vec<u32> {
+        with_ob(|| ffi::mol_graph_invariant_distances(self.as_inner()))
+    }
+
     /// Find every unique way `query` occurs as a substructure of this molecule.
     ///
     /// Each returned mapping lists, for every atom of `query` (in `query`'s atom
