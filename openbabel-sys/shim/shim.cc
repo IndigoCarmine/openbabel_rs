@@ -40,6 +40,22 @@ namespace {
 
 std::string to_std(rust::Str s) { return std::string(s.data(), s.size()); }
 
+// Build a rust::String from OpenBabel text WITHOUT ever throwing.
+//
+// rust::String's ordinary constructor validates UTF-8 and throws
+// std::invalid_argument on any invalid byte. Text that originates in an input
+// file — molecule/reaction titles, atom types, residue names, string
+// properties, space-group names, … — may hold arbitrary bytes, so that
+// exception is reachable with perfectly ordinary input. Because the
+// cxx-generated FFI wrappers are `noexcept`, an escaping exception would call
+// std::terminate() and abort the whole process. Lossy conversion substitutes
+// U+FFFD for invalid sequences and is itself noexcept, so it both prevents the
+// abort and preserves the (mostly valid) text instead of discarding it.
+rust::String to_rust(const std::string &s) { return rust::String::lossy(s); }
+rust::String to_rust(const char *s) {
+  return s ? rust::String::lossy(s) : rust::String();
+}
+
 // Fetch atom `idx` (1-based). Returns nullptr if out of range.
 const OpenBabel::OBAtom *atom_at(const Molecule &mol, uint32_t idx) {
   return const_cast<OpenBabel::OBMol &>(mol.mol).GetAtom(static_cast<int>(idx));
@@ -53,7 +69,7 @@ const OpenBabel::OBBond *bond_at(const Molecule &mol, uint32_t idx) {
 }  // namespace
 
 rust::String release_version() {
-  return rust::String(OpenBabel::OBReleaseVersion());
+  return to_rust(OpenBabel::OBReleaseVersion());
 }
 
 void set_env(rust::Str key, rust::Str value) {
@@ -92,7 +108,7 @@ rust::String mol_write(const Molecule &mol, rust::Str format, bool &ok) {
     }
     ok = true;
     std::string out = conv.WriteString(&const_cast<Molecule &>(mol).mol);
-    return rust::String(out);
+    return to_rust(out);
   } catch (...) {
     ok = false;
     return rust::String();
@@ -101,7 +117,7 @@ rust::String mol_write(const Molecule &mol, rust::Str format, bool &ok) {
 
 rust::String mol_formula(const Molecule &mol) {
   try {
-    return rust::String(const_cast<Molecule &>(mol).mol.GetFormula());
+    return to_rust(const_cast<Molecule &>(mol).mol.GetFormula());
   } catch (...) {
     return rust::String();
   }
@@ -135,7 +151,7 @@ uint32_t mol_num_atoms(const Molecule &mol) { return mol.mol.NumAtoms(); }
 uint32_t mol_num_bonds(const Molecule &mol) { return mol.mol.NumBonds(); }
 
 rust::String mol_title(const Molecule &mol) {
-  return rust::String(const_cast<Molecule &>(mol).mol.GetTitle());
+  return to_rust(const_cast<Molecule &>(mol).mol.GetTitle());
 }
 
 void mol_set_title(Molecule &mol, rust::Str title) {
@@ -357,7 +373,7 @@ double mol_energy(const Molecule &mol, rust::Str ff_id, bool &ok) {
 rust::String forcefield_unit(rust::Str ff_id) {
   try {
     OpenBabel::OBForceField *ff = find_forcefield(to_std(ff_id));
-    return ff ? rust::String(ff->GetUnit()) : rust::String();
+    return ff ? to_rust(ff->GetUnit()) : rust::String();
   } catch (...) {
     return rust::String();
   }
@@ -461,7 +477,7 @@ rust::String mol_to_svg(const Molecule &mol, bool all_carbons, bool atom_indices
     if (all_carbons) conv.AddOption("a", OpenBabel::OBConversion::OUTOPTIONS);
     if (atom_indices) conv.AddOption("i", OpenBabel::OBConversion::OUTOPTIONS);
     ok = true;
-    return rust::String(conv.WriteString(&const_cast<Molecule &>(mol).mol));
+    return to_rust(conv.WriteString(&const_cast<Molecule &>(mol).mol));
   } catch (...) {
     ok = false;
     return rust::String();
@@ -650,10 +666,10 @@ rust::Vec<double> mol_conformer_energies(const Molecule &mol, rust::Str ff_id) {
 // --- Element data --------------------------------------------------------
 
 rust::String element_symbol(uint32_t z) {
-  return rust::String(OpenBabel::OBElements::GetSymbol(z));
+  return to_rust(OpenBabel::OBElements::GetSymbol(z));
 }
 rust::String element_name(uint32_t z) {
-  return rust::String(OpenBabel::OBElements::GetName(z));
+  return to_rust(OpenBabel::OBElements::GetName(z));
 }
 uint32_t element_atomic_number(rust::Str symbol) {
   return OpenBabel::OBElements::GetAtomicNum(to_std(symbol).c_str());
@@ -679,7 +695,7 @@ uint32_t element_max_bonds(uint32_t z) {
 
 rust::String atom_type(const Molecule &mol, uint32_t idx) {
   auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
-  return a ? rust::String(a->GetType()) : rust::String();
+  return a ? to_rust(a->GetType()) : rust::String();
 }
 uint32_t atom_isotope(const Molecule &mol, uint32_t idx) {
   const auto *a = atom_at(mol, idx);
@@ -786,7 +802,7 @@ uint32_t mol_num_rings(const Molecule &mol) {
 }
 rust::String mol_spaced_formula(const Molecule &mol) {
   try {
-    return rust::String(const_cast<Molecule &>(mol).mol.GetSpacedFormula());
+    return to_rust(const_cast<Molecule &>(mol).mol.GetSpacedFormula());
   } catch (...) {
     return rust::String();
   }
@@ -833,7 +849,14 @@ double mol_torsion(const Molecule &mol, uint32_t i, uint32_t j, uint32_t k,
 }
 std::unique_ptr<Molecule> mol_clone(const Molecule &mol) {
   auto m = std::unique_ptr<Molecule>(new Molecule());
-  m->mol = const_cast<Molecule &>(mol).mol;  // OBMol copy assignment
+  try {
+    m->mol = const_cast<Molecule &>(mol).mol;  // OBMol copy assignment
+  } catch (...) {
+    // Copying an OBMol only fails by exhausting memory. Return a valid (empty)
+    // molecule rather than let the exception cross the noexcept FFI boundary:
+    // the safe wrapper relies on this never being null.
+    m->mol.Clear();
+  }
   return m;
 }
 bool mol_strip_salts(Molecule &mol, uint32_t threshold) {
@@ -879,7 +902,7 @@ rust::String mol_get_property(const Molecule &mol, rust::Str key, bool &ok) {
       return rust::String();
     }
     ok = true;
-    return rust::String(pd->GetValue());
+    return to_rust(pd->GetValue());
   } catch (...) {
     ok = false;
     return rust::String();
@@ -898,7 +921,7 @@ OpenBabel::OBResidue *residue_at(const Molecule &mol, uint32_t ridx) {
 // Convert a single char to a rust::String, treating '\0' and ' ' as empty.
 rust::String char_to_string(char c) {
   if (c == '\0' || c == ' ') return rust::String();
-  return rust::String(std::string(1, c));
+  return to_rust(std::string(1, c));
 }
 }  // namespace
 
@@ -907,7 +930,7 @@ uint32_t mol_num_residues(const Molecule &mol) {
 }
 rust::String residue_name(const Molecule &mol, uint32_t ridx) {
   auto *r = residue_at(mol, ridx);
-  return r ? rust::String(r->GetName()) : rust::String();
+  return r ? to_rust(r->GetName()) : rust::String();
 }
 int residue_number(const Molecule &mol, uint32_t ridx) {
   auto *r = residue_at(mol, ridx);
@@ -915,7 +938,7 @@ int residue_number(const Molecule &mol, uint32_t ridx) {
 }
 rust::String residue_number_string(const Molecule &mol, uint32_t ridx) {
   auto *r = residue_at(mol, ridx);
-  return r ? rust::String(r->GetNumString()) : rust::String();
+  return r ? to_rust(r->GetNumString()) : rust::String();
 }
 rust::String residue_chain(const Molecule &mol, uint32_t ridx) {
   auto *r = residue_at(mol, ridx);
@@ -957,7 +980,7 @@ rust::String atom_residue_atom_id(const Molecule &mol, uint32_t idx) {
   auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
   if (!a || !a->HasResidue()) return rust::String();
   OpenBabel::OBResidue *r = a->GetResidue();
-  return r ? rust::String(r->GetAtomID(a)) : rust::String();
+  return r ? to_rust(r->GetAtomID(a)) : rust::String();
 }
 bool atom_is_hetatm(const Molecule &mol, uint32_t idx) {
   auto *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
@@ -1224,32 +1247,57 @@ bool mol_delete_bond(Molecule &mol, uint32_t idx) {
   if (!b) return false;
   return mol.mol.DeleteBond(b);
 }
-void mol_begin_modify(Molecule &mol) { mol.mol.BeginModify(); }
-void mol_end_modify(Molecule &mol) { mol.mol.EndModify(); }
+void mol_begin_modify(Molecule &mol) {
+  try {
+    mol.mol.BeginModify();
+  } catch (...) {
+  }
+}
+void mol_end_modify(Molecule &mol) {
+  // EndModify re-runs perception (rings, aromaticity, …), which can throw.
+  try {
+    mol.mol.EndModify();
+  } catch (...) {
+  }
+}
 void mol_clear(Molecule &mol) { mol.mol.Clear(); }
 void mol_translate(Molecule &mol, double x, double y, double z) {
   mol.mol.Translate(OpenBabel::vector3(x, y, z));
 }
 bool mol_set_coordinates(Molecule &mol, rust::Slice<const double> coords) {
-  unsigned int n = mol.mol.NumAtoms();
-  if (coords.size() != static_cast<size_t>(n) * 3) return false;
-  if (n == 0) return true;
-  // OBMol::SetCoordinates copies into the existing conformer buffer when one is
-  // present, but ADOPTS the passed pointer (stores it in _vconf) when the
-  // molecule has no coordinates yet. So allocate on the heap and only free our
-  // buffer in the copy case; otherwise OpenBabel now owns it.
-  bool had_coords = mol.mol.GetCoordinates() != nullptr;
-  double *buf = new double[coords.size()];
-  std::copy(coords.begin(), coords.end(), buf);
-  mol.mol.SetCoordinates(buf);
-  if (had_coords) delete[] buf;
-  return true;
+  try {
+    unsigned int n = mol.mol.NumAtoms();
+    if (coords.size() != static_cast<size_t>(n) * 3) return false;
+    if (n == 0) return true;
+    // OBMol::SetCoordinates copies into the existing conformer buffer when one
+    // is present, but ADOPTS the passed pointer (stores it in _vconf) when the
+    // molecule has no coordinates yet. So allocate on the heap and only free
+    // our buffer in the copy case; otherwise OpenBabel now owns it.
+    bool had_coords = mol.mol.GetCoordinates() != nullptr;
+    double *buf = new double[coords.size()];
+    std::copy(coords.begin(), coords.end(), buf);
+    mol.mol.SetCoordinates(buf);
+    if (had_coords) delete[] buf;
+    return true;
+  } catch (...) {
+    return false;
+  }
 }
 void mol_set_dimension(Molecule &mol, uint32_t dim) {
   mol.mol.SetDimension(static_cast<unsigned short>(dim));
 }
-void mol_connect_the_dots(Molecule &mol) { mol.mol.ConnectTheDots(); }
-void mol_perceive_bond_orders(Molecule &mol) { mol.mol.PerceiveBondOrders(); }
+void mol_connect_the_dots(Molecule &mol) {
+  try {
+    mol.mol.ConnectTheDots();
+  } catch (...) {
+  }
+}
+void mol_perceive_bond_orders(Molecule &mol) {
+  try {
+    mol.mol.PerceiveBondOrders();
+  } catch (...) {
+  }
+}
 bool mol_add_polar_hydrogens(Molecule &mol) {
   try {
     return mol.mol.AddPolarHydrogens();
@@ -1421,20 +1469,34 @@ OpenBabel::OBRing *ring_at(const Molecule &mol, uint32_t ring_idx) {
 }
 }  // namespace
 
+// ring_at() (and hence every accessor below) calls OBMol::GetSSSR(), which runs
+// ring perception on first use and can throw; guard each like mol_num_rings.
 uint32_t ring_size(const Molecule &mol, uint32_t ring_idx) {
-  OpenBabel::OBRing *r = ring_at(mol, ring_idx);
-  return r ? static_cast<uint32_t>(r->Size()) : 0;
+  try {
+    OpenBabel::OBRing *r = ring_at(mol, ring_idx);
+    return r ? static_cast<uint32_t>(r->Size()) : 0;
+  } catch (...) {
+    return 0;
+  }
 }
 rust::Vec<uint32_t> ring_atom_indices(const Molecule &mol, uint32_t ring_idx) {
   rust::Vec<uint32_t> out;
-  OpenBabel::OBRing *r = ring_at(mol, ring_idx);
-  if (!r) return out;
-  for (int idx : r->_path) out.push_back(static_cast<uint32_t>(idx) - 1);  // 0-based
+  try {
+    OpenBabel::OBRing *r = ring_at(mol, ring_idx);
+    if (!r) return out;
+    for (int idx : r->_path) out.push_back(static_cast<uint32_t>(idx) - 1);  // 0-based
+  } catch (...) {
+    out.clear();
+  }
   return out;
 }
 bool ring_is_aromatic(const Molecule &mol, uint32_t ring_idx) {
-  OpenBabel::OBRing *r = ring_at(mol, ring_idx);
-  return r ? r->IsAromatic() : false;
+  try {
+    OpenBabel::OBRing *r = ring_at(mol, ring_idx);
+    return r ? r->IsAromatic() : false;
+  } catch (...) {
+    return false;
+  }
 }
 
 // --- Graph navigation -----------------------------------------------------
@@ -1508,7 +1570,7 @@ double mol_cell_volume(const Molecule &mol) {
 }
 rust::String mol_cell_spacegroup(const Molecule &mol) {
   OpenBabel::OBUnitCell *c = unit_cell(mol);
-  return c ? rust::String(c->GetSpaceGroupName()) : rust::String();
+  return c ? to_rust(c->GetSpaceGroupName()) : rust::String();
 }
 uint32_t mol_cell_lattice_type(const Molecule &mol) {
   OpenBabel::OBUnitCell *c = unit_cell(mol);
@@ -1541,11 +1603,15 @@ rust::Vec<double> mol_cell_to_cartesian(const Molecule &mol, double x, double y,
 // sharing a value are graph-equivalent. Vector length == number of atoms.
 rust::Vec<uint32_t> mol_symmetry_classes(const Molecule &mol) {
   rust::Vec<uint32_t> out;
-  OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
-  OpenBabel::OBGraphSym gs(&m);
-  std::vector<unsigned int> sym;
-  gs.GetSymmetry(sym);
-  for (unsigned int v : sym) out.push_back(static_cast<uint32_t>(v));
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    OpenBabel::OBGraphSym gs(&m);
+    std::vector<unsigned int> sym;
+    gs.GetSymmetry(sym);
+    for (unsigned int v : sym) out.push_back(static_cast<uint32_t>(v));
+  } catch (...) {
+    out.clear();  // never a partial (length must equal num_atoms, or be empty)
+  }
   return out;
 }
 
@@ -1553,14 +1619,18 @@ rust::Vec<uint32_t> mol_symmetry_classes(const Molecule &mol) {
 // repeatable canonical labelling built from the symmetry classes.
 rust::Vec<uint32_t> mol_canonical_ranks(const Molecule &mol) {
   rust::Vec<uint32_t> out;
-  OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
-  OpenBabel::OBGraphSym gs(&m);
-  std::vector<unsigned int> sym;
-  gs.GetSymmetry(sym);
-  std::vector<unsigned int> canon;
-  // Empty mask == all atoms (see canon.cpp); default maxSeconds, not onlyOne.
-  OpenBabel::CanonicalLabels(&m, sym, canon);
-  for (unsigned int v : canon) out.push_back(static_cast<uint32_t>(v));
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    OpenBabel::OBGraphSym gs(&m);
+    std::vector<unsigned int> sym;
+    gs.GetSymmetry(sym);
+    std::vector<unsigned int> canon;
+    // Empty mask == all atoms (see canon.cpp); default maxSeconds, not onlyOne.
+    OpenBabel::CanonicalLabels(&m, sym, canon);
+    for (unsigned int v : canon) out.push_back(static_cast<uint32_t>(v));
+  } catch (...) {
+    out.clear();  // never a partial (length must equal num_atoms, or be empty)
+  }
   return out;
 }
 
@@ -1592,7 +1662,7 @@ rust::String reaction_write(const Reaction &r, rust::Str format, bool &ok) {
     }
     std::ostringstream oss;
     ok = conv.Write(&const_cast<Reaction &>(r).rxn, &oss);
-    return rust::String(oss.str());
+    return to_rust(oss.str());
   } catch (...) {
     ok = false;
     return rust::String();
@@ -1612,9 +1682,13 @@ uint32_t reaction_num_agents(const Reaction &r) {
 // Copy a shared_ptr<OBMol> component out as a standalone Molecule.
 static std::unique_ptr<Molecule> component_copy(std::shared_ptr<OpenBabel::OBMol> sp) {
   if (!sp) return nullptr;
-  auto m = std::unique_ptr<Molecule>(new Molecule());
-  m->mol = *sp;  // OBMol copy assignment
-  return m;
+  try {
+    auto m = std::unique_ptr<Molecule>(new Molecule());
+    m->mol = *sp;  // OBMol copy assignment
+    return m;
+  } catch (...) {
+    return nullptr;  // out-of-memory: the safe wrapper maps null -> None
+  }
 }
 
 std::unique_ptr<Molecule> reaction_reactant(const Reaction &r, uint32_t i) {
@@ -1628,23 +1702,32 @@ std::unique_ptr<Molecule> reaction_agent(const Reaction &r, uint32_t i) {
 }
 
 void reaction_add_reactant(Reaction &r, const Molecule &mol) {
-  r.rxn.AddReactant(std::make_shared<OpenBabel::OBMol>(const_cast<Molecule &>(mol).mol));
+  try {
+    r.rxn.AddReactant(std::make_shared<OpenBabel::OBMol>(const_cast<Molecule &>(mol).mol));
+  } catch (...) {
+  }
 }
 void reaction_add_product(Reaction &r, const Molecule &mol) {
-  r.rxn.AddProduct(std::make_shared<OpenBabel::OBMol>(const_cast<Molecule &>(mol).mol));
+  try {
+    r.rxn.AddProduct(std::make_shared<OpenBabel::OBMol>(const_cast<Molecule &>(mol).mol));
+  } catch (...) {
+  }
 }
 void reaction_add_agent(Reaction &r, const Molecule &mol) {
-  r.rxn.AddAgent(std::make_shared<OpenBabel::OBMol>(const_cast<Molecule &>(mol).mol));
+  try {
+    r.rxn.AddAgent(std::make_shared<OpenBabel::OBMol>(const_cast<Molecule &>(mol).mol));
+  } catch (...) {
+  }
 }
 
 rust::String reaction_title(const Reaction &r) {
-  return rust::String(const_cast<Reaction &>(r).rxn.GetTitle());
+  return to_rust(const_cast<Reaction &>(r).rxn.GetTitle());
 }
 void reaction_set_title(Reaction &r, rust::Str title) {
   r.rxn.SetTitle(to_std(title));
 }
 rust::String reaction_comment(const Reaction &r) {
-  return rust::String(const_cast<Reaction &>(r).rxn.GetComment());
+  return to_rust(const_cast<Reaction &>(r).rxn.GetComment());
 }
 void reaction_set_comment(Reaction &r, rust::Str comment) {
   r.rxn.SetComment(to_std(comment));
@@ -1677,21 +1760,24 @@ rust::Vec<uint32_t> mol_substructure_mappings(const Molecule &query, const Molec
                                               uint32_t &width) {
   rust::Vec<uint32_t> out;
   width = 0;
-  OpenBabel::OBMol &q = const_cast<Molecule &>(query).mol;
-  OpenBabel::OBMol &t = const_cast<Molecule &>(target).mol;
-  OpenBabel::OBQuery *oq = OpenBabel::CompileMoleculeQuery(&q);
-  if (!oq) return out;
-  width = static_cast<uint32_t>(oq->GetAtoms().size());
-  OpenBabel::OBIsomorphismMapper *mapper = OpenBabel::OBIsomorphismMapper::GetInstance(oq);
-  if (!mapper) {
-    delete oq;
-    return out;
+  try {
+    OpenBabel::OBMol &q = const_cast<Molecule &>(query).mol;
+    OpenBabel::OBMol &t = const_cast<Molecule &>(target).mol;
+    // Own the query/mapper via unique_ptr so they are freed on every path,
+    // including if MapUnique or flatten_mappings throws — the raw new/delete
+    // version leaked both on the exception path.
+    std::unique_ptr<OpenBabel::OBQuery> oq(OpenBabel::CompileMoleculeQuery(&q));
+    if (!oq) return out;
+    width = static_cast<uint32_t>(oq->GetAtoms().size());
+    std::unique_ptr<OpenBabel::OBIsomorphismMapper> mapper(
+        OpenBabel::OBIsomorphismMapper::GetInstance(oq.get()));
+    if (!mapper) return out;
+    OpenBabel::OBIsomorphismMapper::Mappings maps;
+    mapper->MapUnique(&t, maps);
+    flatten_mappings(maps, width, out);
+  } catch (...) {
+    out.clear();
   }
-  OpenBabel::OBIsomorphismMapper::Mappings maps;
-  mapper->MapUnique(&t, maps);
-  flatten_mappings(maps, width, out);
-  delete mapper;
-  delete oq;
   return out;
 }
 
@@ -1699,11 +1785,16 @@ rust::Vec<uint32_t> mol_substructure_mappings(const Molecule &query, const Molec
 // automorphism is a permutation of atom indices (0-based), `width` per row.
 rust::Vec<uint32_t> mol_automorphisms(const Molecule &mol, uint32_t &width) {
   rust::Vec<uint32_t> out;
-  OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
-  width = static_cast<uint32_t>(m.NumAtoms());
-  OpenBabel::OBIsomorphismMapper::Mappings auts;
-  OpenBabel::FindAutomorphisms(&m, auts);
-  flatten_mappings(auts, width, out);
+  width = 0;
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    width = static_cast<uint32_t>(m.NumAtoms());
+    OpenBabel::OBIsomorphismMapper::Mappings auts;
+    OpenBabel::FindAutomorphisms(&m, auts);
+    flatten_mappings(auts, width, out);
+  } catch (...) {
+    out.clear();
+  }
   return out;
 }
 
