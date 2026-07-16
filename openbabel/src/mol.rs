@@ -80,6 +80,61 @@ impl Molecule {
         })
     }
 
+    /// Read the first molecule from a file on disk.
+    ///
+    /// `format` is the OpenBabel format id (e.g. `"sdf"`); pass `None` to let
+    /// OpenBabel infer it from the file's extension. Returns [`Error::Io`] if
+    /// the file cannot be opened or its first record cannot be parsed.
+    pub fn read_file(path: &str, format: Option<&str>) -> Result<Molecule, Error> {
+        let inner = with_ob(|| ffi::mol_read_file(path, format.unwrap_or("")));
+        if inner.is_null() {
+            Err(Error::Io {
+                path: path.to_string(),
+            })
+        } else {
+            Ok(Molecule::from_inner(inner))
+        }
+    }
+
+    /// Read **every** molecule from a (possibly multi-record) file on disk.
+    ///
+    /// `format` is the OpenBabel format id; pass `None` to infer it from the
+    /// file's extension. Returns one [`Molecule`] per record, in file order.
+    /// Returns [`Error::Io`] only if the file itself cannot be opened — a file
+    /// that opens but yields no records gives an empty vector.
+    pub fn read_file_many(path: &str, format: Option<&str>) -> Result<Vec<Molecule>, Error> {
+        // The shim can't tell "missing file" from "no records"; check openability
+        // here so a genuine I/O failure surfaces as an error.
+        std::fs::File::open(path).map_err(|_| Error::Io {
+            path: path.to_string(),
+        })?;
+        Ok(with_ob(|| {
+            ffi::mol_read_file_many(path, format.unwrap_or(""))
+                .iter()
+                .map(|m| Molecule {
+                    inner: ffi::mol_clone(m),
+                })
+                .collect()
+        }))
+    }
+
+    /// Write this molecule to a file on disk.
+    ///
+    /// `format` is the OpenBabel format id; pass `None` to infer it from the
+    /// file's extension. Returns [`Error::Io`] if the format cannot be resolved
+    /// or the file cannot be written.
+    pub fn write_file(&self, path: &str, format: Option<&str>) -> Result<(), Error> {
+        let mut ok = false;
+        with_ob(|| ffi::mol_write_file(self.as_inner(), path, format.unwrap_or(""), &mut ok));
+        if ok {
+            Ok(())
+        } else {
+            Err(Error::Io {
+                path: path.to_string(),
+            })
+        }
+    }
+
     /// Serialize this molecule to `format`, returning the text.
     ///
     /// Returns [`Error::UnknownFormat`] if OpenBabel doesn't know `format`.

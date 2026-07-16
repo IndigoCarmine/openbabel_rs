@@ -473,6 +473,14 @@ void reaction_set_comment(Reaction &r, rust::Str comment);
 bool reaction_is_reversible(const Reaction &r);
 void reaction_set_reversible(Reaction &r, bool value);
 
+// --- File I/O (format auto-detected from extension when `format` empty) ----
+// Read the first molecule from a file; null on open/parse failure.
+std::unique_ptr<Molecule> mol_read_file(rust::Str path, rust::Str format);
+// Read every molecule from a (possibly multi-record) file; empty on failure.
+std::unique_ptr<std::vector<Molecule>> mol_read_file_many(rust::Str path, rust::Str format);
+// Write mol to a file; sets ok=false on unknown format / write failure.
+void mol_write_file(const Molecule &mol, rust::Str path, rust::Str format, bool &ok);
+
 // --- Subgraph isomorphism & automorphisms ---------------------------------
 // Unique mappings of `query` as a substructure of `target`; sets `width` to the
 // query atom count, flat result = `width` target atom indices (0-based) per

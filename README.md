@@ -175,6 +175,9 @@ Rings & multi-molecule I/O:
   `size`, `atom_indices`, and `is_aromatic`.
 - Read or write many molecules at once: `Molecule::parse_many` (every record of
   a multi-SDF, one SMILES per line, …) and the free `write_many`.
+- Read and write files directly: `Molecule::read_file` / `read_file_many` /
+  `write_file` take a path and an optional format id — pass `None` to let
+  OpenBabel infer the format from the file extension.
 
 Graph navigation & crystallography:
 

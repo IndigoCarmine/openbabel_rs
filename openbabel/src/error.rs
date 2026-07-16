@@ -28,6 +28,12 @@ pub enum Error {
         /// The product SMARTS.
         product: String,
     },
+    /// A file could not be read or written — it was missing or unreadable, the
+    /// format could not be resolved, or its contents could not be parsed.
+    Io {
+        /// The file path involved.
+        path: String,
+    },
 }
 
 impl fmt::Display for Error {
@@ -44,6 +50,9 @@ impl fmt::Display for Error {
             }
             Error::InvalidTransform { reactant, product } => {
                 write!(f, "invalid transform {reactant:?} >> {product:?}")
+            }
+            Error::Io { path } => {
+                write!(f, "could not read or write file {path:?}")
             }
         }
     }

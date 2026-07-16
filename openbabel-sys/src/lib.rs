@@ -372,6 +372,11 @@ pub mod ffi {
         /// SMILES per line, …).
         fn mol_read_many(format: &str, data: &str) -> UniquePtr<CxxVector<Molecule>>;
 
+        // File I/O (empty `format` = auto-detect from the file extension).
+        fn mol_read_file(path: &str, format: &str) -> UniquePtr<Molecule>;
+        fn mol_read_file_many(path: &str, format: &str) -> UniquePtr<CxxVector<Molecule>>;
+        fn mol_write_file(mol: &Molecule, path: &str, format: &str, ok: &mut bool);
+
         // Ring access (SSSR; ring_idx is 0-based, 0..mol_num_rings).
         fn ring_size(mol: &Molecule, ring_idx: u32) -> u32;
         fn ring_atom_indices(mol: &Molecule, ring_idx: u32) -> Vec<u32>;

@@ -1298,6 +1298,71 @@ std::unique_ptr<std::vector<Molecule>> mol_read_many(rust::Str format, rust::Str
   return out;
 }
 
+// --- File I/O (format auto-detected from extension when `format` empty) ----
+
+namespace {
+// Resolve the input format from `format` (if given) or the file extension.
+bool set_in_format(OpenBabel::OBConversion &conv, const std::string &format,
+                   const std::string &path) {
+  if (!format.empty()) return conv.SetInFormat(format.c_str());
+  OpenBabel::OBFormat *f = OpenBabel::OBConversion::FormatFromExt(path);
+  return f && conv.SetInFormat(f);
+}
+bool set_out_format(OpenBabel::OBConversion &conv, const std::string &format,
+                    const std::string &path) {
+  if (!format.empty()) return conv.SetOutFormat(format.c_str());
+  OpenBabel::OBFormat *f = OpenBabel::OBConversion::FormatFromExt(path);
+  return f && conv.SetOutFormat(f);
+}
+}  // namespace
+
+std::unique_ptr<Molecule> mol_read_file(rust::Str path, rust::Str format) {
+  try {
+    OpenBabel::OBConversion conv;
+    std::string p = to_std(path);
+    if (!set_in_format(conv, to_std(format), p)) return nullptr;
+    auto m = std::unique_ptr<Molecule>(new Molecule());
+    if (!conv.ReadFile(&m->mol, p)) return nullptr;
+    return m;
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+std::unique_ptr<std::vector<Molecule>> mol_read_file_many(rust::Str path, rust::Str format) {
+  auto out = std::unique_ptr<std::vector<Molecule>>(new std::vector<Molecule>());
+  try {
+    OpenBabel::OBConversion conv;
+    std::string p = to_std(path);
+    if (!set_in_format(conv, to_std(format), p)) return out;
+    Molecule first;
+    // ReadFile opens the file, sets it as the input stream, and reads record #1.
+    if (!conv.ReadFile(&first.mol, p)) return out;
+    out->push_back(std::move(first));
+    while (true) {
+      Molecule m;
+      if (!conv.Read(&m.mol)) break;  // continue on the same open stream
+      out->push_back(std::move(m));
+    }
+  } catch (...) {
+  }
+  return out;
+}
+
+void mol_write_file(const Molecule &mol, rust::Str path, rust::Str format, bool &ok) {
+  try {
+    OpenBabel::OBConversion conv;
+    std::string p = to_std(path);
+    if (!set_out_format(conv, to_std(format), p)) {
+      ok = false;
+      return;
+    }
+    ok = conv.WriteFile(&const_cast<Molecule &>(mol).mol, p);
+  } catch (...) {
+    ok = false;
+  }
+}
+
 // --- Ring access (SSSR; ring_idx is 0-based) ------------------------------
 
 namespace {
