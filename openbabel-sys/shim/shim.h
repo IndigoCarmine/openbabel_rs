@@ -522,4 +522,13 @@ bool bond_is_hash(const Molecule &mol, uint32_t idx);
 void bond_set_wedge(Molecule &mol, uint32_t idx, bool value);
 void bond_set_hash(Molecule &mol, uint32_t idx, bool value);
 
+// --- Persistent atom ids, connectivity relations, LSSR (atoms 1-based) -----
+uint64_t atom_id(const Molecule &mol, uint32_t idx);
+void atom_set_id(Molecule &mol, uint32_t idx, uint64_t id);
+bool atom_is_connected(const Molecule &mol, uint32_t a, uint32_t b);
+bool atom_is_one_three(const Molecule &mol, uint32_t a, uint32_t b);
+bool atom_is_one_four(const Molecule &mol, uint32_t a, uint32_t b);
+// Ring sizes from the Large Set of Smallest Rings.
+rust::Vec<uint32_t> mol_lssr_sizes(const Molecule &mol);
+
 }  // namespace ob_shim

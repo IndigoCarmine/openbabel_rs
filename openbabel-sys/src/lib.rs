@@ -457,6 +457,14 @@ pub mod ffi {
         fn bond_is_hash(mol: &Molecule, idx: u32) -> bool;
         fn bond_set_wedge(mol: Pin<&mut Molecule>, idx: u32, value: bool);
         fn bond_set_hash(mol: Pin<&mut Molecule>, idx: u32, value: bool);
+
+        // Persistent atom ids, connectivity relations, LSSR (atoms 1-based).
+        fn atom_id(mol: &Molecule, idx: u32) -> u64;
+        fn atom_set_id(mol: Pin<&mut Molecule>, idx: u32, id: u64);
+        fn atom_is_connected(mol: &Molecule, a: u32, b: u32) -> bool;
+        fn atom_is_one_three(mol: &Molecule, a: u32, b: u32) -> bool;
+        fn atom_is_one_four(mol: &Molecule, a: u32, b: u32) -> bool;
+        fn mol_lssr_sizes(mol: &Molecule) -> Vec<u32>;
     }
 }
 

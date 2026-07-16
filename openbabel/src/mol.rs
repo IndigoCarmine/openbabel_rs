@@ -765,6 +765,15 @@ impl Molecule {
         (0..self.num_rings()).map(move |i| Ring::new(mol, i))
     }
 
+    /// The sizes of the rings in the Large Set of Smallest Rings (LSSR).
+    ///
+    /// The LSSR is an alternative ring perception to the SSSR exposed by
+    /// [`rings`](Self::rings); the two agree for most molecules but can differ
+    /// for fused polycyclic systems.
+    pub fn lssr_ring_sizes(&self) -> Vec<u32> {
+        with_ob(|| ffi::mol_lssr_sizes(self.as_inner()))
+    }
+
     // --- Construction & editing ------------------------------------------
 
     /// Add an atom of atomic number `atomic_number` and return its 0-based

@@ -1847,4 +1847,42 @@ void bond_set_hash(Molecule &mol, uint32_t idx, bool value) {
   if (b) b->SetHash(value);
 }
 
+// --- Persistent atom ids, connectivity relations, LSSR --------------------
+
+// Persistent atom id (survives atom deletion, unlike the 1-based index).
+uint64_t atom_id(const Molecule &mol, uint32_t idx) {
+  const OpenBabel::OBAtom *a = atom_at(mol, idx);
+  return a ? static_cast<uint64_t>(a->GetId()) : 0;
+}
+void atom_set_id(Molecule &mol, uint32_t idx, uint64_t id) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  if (a) a->SetId(static_cast<unsigned long>(id));
+}
+
+// Connectivity relations between atoms `a` and `b` (both 1-based).
+bool atom_is_connected(const Molecule &mol, uint32_t a, uint32_t b) {
+  OpenBabel::OBAtom *pa = const_cast<OpenBabel::OBAtom *>(atom_at(mol, a));
+  OpenBabel::OBAtom *pb = const_cast<OpenBabel::OBAtom *>(atom_at(mol, b));
+  return (pa && pb) ? pa->IsConnected(pb) : false;
+}
+bool atom_is_one_three(const Molecule &mol, uint32_t a, uint32_t b) {
+  OpenBabel::OBAtom *pa = const_cast<OpenBabel::OBAtom *>(atom_at(mol, a));
+  OpenBabel::OBAtom *pb = const_cast<OpenBabel::OBAtom *>(atom_at(mol, b));
+  return (pa && pb) ? pa->IsOneThree(pb) : false;
+}
+bool atom_is_one_four(const Molecule &mol, uint32_t a, uint32_t b) {
+  OpenBabel::OBAtom *pa = const_cast<OpenBabel::OBAtom *>(atom_at(mol, a));
+  OpenBabel::OBAtom *pb = const_cast<OpenBabel::OBAtom *>(atom_at(mol, b));
+  return (pa && pb) ? pa->IsOneFour(pb) : false;
+}
+
+// Ring sizes from the Large Set of Smallest Rings (an alternative to SSSR).
+rust::Vec<uint32_t> mol_lssr_sizes(const Molecule &mol) {
+  rust::Vec<uint32_t> out;
+  std::vector<OpenBabel::OBRing *> &rings = const_cast<Molecule &>(mol).mol.GetLSSR();
+  for (OpenBabel::OBRing *r : rings)
+    if (r) out.push_back(static_cast<uint32_t>(r->Size()));
+  return out;
+}
+
 }  // namespace ob_shim

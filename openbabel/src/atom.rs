@@ -269,6 +269,39 @@ impl<'mol> Atom<'mol> {
         let value = crate::with_ob(|| ffi::atom_get_data(self.mol, self.ob_idx, key, &mut ok));
         ok.then_some(value)
     }
+
+    /// This atom's persistent id.
+    ///
+    /// Unlike [`index`](Self::index), the id is stable across atom deletions —
+    /// useful for tracking an atom while the molecule is edited. Set it with
+    /// [`AtomMut::set_id`].
+    pub fn id(&self) -> u64 {
+        crate::with_ob(|| ffi::atom_id(self.mol, self.ob_idx))
+    }
+
+    /// Whether this atom is directly bonded to `other`.
+    pub fn is_connected(&self, other: &Atom<'mol>) -> bool {
+        crate::with_ob(|| ffi::atom_is_connected(self.mol, self.ob_idx, other.ob_idx))
+    }
+
+    /// Whether this atom is in a 1-3 relationship with `other` — the two atoms
+    /// share a common bonded neighbour, as at the ends of a bond angle.
+    pub fn is_one_three(&self, other: &Atom<'mol>) -> bool {
+        crate::with_ob(|| ffi::atom_is_one_three(self.mol, self.ob_idx, other.ob_idx))
+    }
+
+    /// Whether this atom is in a 1-4 relationship with `other` — a neighbour of
+    /// this atom is bonded to a neighbour of `other`, as at the ends of a
+    /// torsion.
+    ///
+    /// This mirrors OpenBabel's `OBAtom::IsOneFour`, which is used to detect
+    /// 1-4 force-field interactions and is intended to be applied *after*
+    /// excluding [`is_connected`](Self::is_connected) and
+    /// [`is_one_three`](Self::is_one_three) pairs — on its own it can also
+    /// return `true` for a 1-3 pair that shares a neighbour.
+    pub fn is_one_four(&self, other: &Atom<'mol>) -> bool {
+        crate::with_ob(|| ffi::atom_is_one_four(self.mol, self.ob_idx, other.ob_idx))
+    }
 }
 
 impl std::fmt::Debug for Atom<'_> {
@@ -354,6 +387,12 @@ impl<'m> AtomMut<'m> {
     /// a workflow.
     pub fn set_data(&mut self, key: &str, value: &str) -> &mut Self {
         crate::with_ob(|| ffi::atom_set_data(self.mol.as_inner_pin_mut(), self.ob_idx, key, value));
+        self
+    }
+
+    /// Set this atom's persistent id (see [`Atom::id`]).
+    pub fn set_id(&mut self, id: u64) -> &mut Self {
+        crate::with_ob(|| ffi::atom_set_id(self.mol.as_inner_pin_mut(), self.ob_idx, id));
         self
     }
 }

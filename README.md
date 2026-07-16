@@ -181,7 +181,8 @@ Construction & editing:
 Rings & multi-molecule I/O:
 
 - Ring perception (SSSR): `Molecule::rings` / `ring` yield a [`Ring`] with
-  `size`, `atom_indices`, and `is_aromatic`.
+  `size`, `atom_indices`, and `is_aromatic`; `lssr_ring_sizes` gives the
+  alternative Large-Set-of-Smallest-Rings sizes.
 - Read or write many molecules at once: `Molecule::parse_many` (every record of
   a multi-SDF, one SMILES per line, …) and the free `write_many`.
 - Read and write files directly: `Molecule::read_file` / `read_file_many` /
@@ -197,6 +198,9 @@ Graph navigation & crystallography:
   (the bond joining two atoms, if any), `count_bonds_of_order`, and
   `explicit_hydrogen_count`; from a [`Bond`], `other_atom` crosses to the far
   end. `Molecule::bond_between` looks up the bond between two atom indices.
+- Atom relationships: `Atom::is_connected` / `is_one_three` / `is_one_four`
+  classify pairs by graph proximity, and `Atom::id` / `AtomMut::set_id` carry a
+  persistent id that survives atom deletion (unlike the positional index).
 - Crystallographic unit cells (present after reading a CIF and similar):
   `Molecule::has_unit_cell` / `unit_cell` yield a [`UnitCell`] with `lengths`,
   `angles`, `volume`, `space_group`, `lattice_type` (a `LatticeType`), and
