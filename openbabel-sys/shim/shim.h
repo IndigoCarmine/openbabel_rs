@@ -473,4 +473,14 @@ void reaction_set_comment(Reaction &r, rust::Str comment);
 bool reaction_is_reversible(const Reaction &r);
 void reaction_set_reversible(Reaction &r, bool value);
 
+// --- Subgraph isomorphism & automorphisms ---------------------------------
+// Unique mappings of `query` as a substructure of `target`; sets `width` to the
+// query atom count, flat result = `width` target atom indices (0-based) per
+// mapping, ordered by query atom index. Empty if no match.
+rust::Vec<uint32_t> mol_substructure_mappings(const Molecule &query, const Molecule &target,
+                                              uint32_t &width);
+// All graph automorphisms of `mol`; sets `width` to the atom count, flat result
+// = one atom-index permutation (0-based) per automorphism.
+rust::Vec<uint32_t> mol_automorphisms(const Molecule &mol, uint32_t &width);
+
 }  // namespace ob_shim

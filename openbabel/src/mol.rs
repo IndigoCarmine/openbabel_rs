@@ -10,6 +10,15 @@ use crate::residue::Residue;
 use crate::ring::Ring;
 use crate::with_ob;
 
+/// Split a flat `Vec<u32>` of `width`-sized rows (as returned by the flattened
+/// isomorphism shim calls) into a `Vec` of rows. A zero width yields no rows.
+fn chunk(flat: Vec<u32>, width: usize) -> Vec<Vec<u32>> {
+    if width == 0 {
+        return Vec::new();
+    }
+    flat.chunks(width).map(<[u32]>::to_vec).collect()
+}
+
 /// Rendering options for [`Molecule::to_svg_with`].
 ///
 /// The default (`SvgOptions::default()`, used by [`Molecule::to_svg`]) draws a
@@ -541,6 +550,41 @@ impl Molecule {
     /// canonical-labelling algorithm. Every atom gets a distinct rank.
     pub fn canonical_ranks(&self) -> Vec<u32> {
         with_ob(|| ffi::mol_canonical_ranks(self.as_inner()))
+    }
+
+    /// Find every unique way `query` occurs as a substructure of this molecule.
+    ///
+    /// Each returned mapping lists, for every atom of `query` (in `query`'s atom
+    /// order), the 0-based index of the matching atom in `self`. Matching is by
+    /// element and bond order (an exact subgraph isomorphism, `OBQuery` +
+    /// VF2), not a flexible SMARTS query — use [`SmartsPattern`](crate::SmartsPattern)
+    /// for that. The result is empty when `query` does not occur.
+    ///
+    /// "Unique" means no two mappings cover exactly the same set of `self`
+    /// atoms (symmetry-equivalent hits are collapsed).
+    pub fn substructure_search(&self, query: &Molecule) -> Vec<Vec<u32>> {
+        let mut width = 0u32;
+        let flat = with_ob(|| ffi::mol_substructure_mappings(query.as_inner(), self.as_inner(), &mut width));
+        chunk(flat, width as usize)
+    }
+
+    /// Whether `query` occurs as a substructure of this molecule (see
+    /// [`substructure_search`](Self::substructure_search)).
+    pub fn has_substructure(&self, query: &Molecule) -> bool {
+        !self.substructure_search(query).is_empty()
+    }
+
+    /// Every graph automorphism of this molecule.
+    ///
+    /// Each automorphism is a permutation of the atoms (a `Vec` indexed by
+    /// 0-based atom index, whose entries are the 0-based indices the atoms map
+    /// to) that preserves the molecular graph. The number of automorphisms is
+    /// the order of the molecule's symmetry group — e.g. 12 for benzene. Built
+    /// on the same symmetry perception as [`symmetry_classes`](Self::symmetry_classes).
+    pub fn automorphisms(&self) -> Vec<Vec<u32>> {
+        let mut width = 0u32;
+        let flat = with_ob(|| ffi::mol_automorphisms(self.as_inner(), &mut width));
+        chunk(flat, width as usize)
     }
 
     /// Whether this molecule carries crystallographic unit-cell information

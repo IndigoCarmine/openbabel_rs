@@ -11,11 +11,13 @@
 #include <openbabel/forcefield.h>
 #include <openbabel/generic.h>
 #include <openbabel/graphsym.h>
+#include <openbabel/isomorphism.h>
 #include <openbabel/math/align.h>
 #include <openbabel/math/vector3.h>
 #include <openbabel/obconversion.h>
 #include <openbabel/op.h>
 #include <openbabel/plugin.h>
+#include <openbabel/query.h>
 #include <openbabel/residue.h>
 #include <openbabel/ring.h>
 #include <openbabel/spectrophore.h>
@@ -1539,6 +1541,57 @@ bool reaction_is_reversible(const Reaction &r) {
 }
 void reaction_set_reversible(Reaction &r, bool value) {
   r.rxn.SetReversible(value);
+}
+
+// --- Subgraph isomorphism & automorphisms ---------------------------------
+
+// Flatten a set of mappings into `width` queried-atom indices per mapping,
+// ordered by query-atom index (both 0-based). `pairs` are (query, queried).
+static void flatten_mappings(const OpenBabel::OBIsomorphismMapper::Mappings &maps,
+                             uint32_t width, rust::Vec<uint32_t> &out) {
+  for (const auto &m : maps) {
+    std::vector<uint32_t> row(width, 0);
+    for (const auto &pr : m)
+      if (pr.first < width) row[pr.first] = static_cast<uint32_t>(pr.second);
+    for (uint32_t v : row) out.push_back(v);
+  }
+}
+
+// All unique mappings of `query` as a substructure of `target`. Sets `width`
+// to the number of query atoms; the flat result holds `width` target atom
+// indices (0-based) per mapping. Empty if there is no match.
+rust::Vec<uint32_t> mol_substructure_mappings(const Molecule &query, const Molecule &target,
+                                              uint32_t &width) {
+  rust::Vec<uint32_t> out;
+  width = 0;
+  OpenBabel::OBMol &q = const_cast<Molecule &>(query).mol;
+  OpenBabel::OBMol &t = const_cast<Molecule &>(target).mol;
+  OpenBabel::OBQuery *oq = OpenBabel::CompileMoleculeQuery(&q);
+  if (!oq) return out;
+  width = static_cast<uint32_t>(oq->GetAtoms().size());
+  OpenBabel::OBIsomorphismMapper *mapper = OpenBabel::OBIsomorphismMapper::GetInstance(oq);
+  if (!mapper) {
+    delete oq;
+    return out;
+  }
+  OpenBabel::OBIsomorphismMapper::Mappings maps;
+  mapper->MapUnique(&t, maps);
+  flatten_mappings(maps, width, out);
+  delete mapper;
+  delete oq;
+  return out;
+}
+
+// All graph automorphisms of `mol`; sets `width` to the atom count. Each
+// automorphism is a permutation of atom indices (0-based), `width` per row.
+rust::Vec<uint32_t> mol_automorphisms(const Molecule &mol, uint32_t &width) {
+  rust::Vec<uint32_t> out;
+  OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+  width = static_cast<uint32_t>(m.NumAtoms());
+  OpenBabel::OBIsomorphismMapper::Mappings auts;
+  OpenBabel::FindAutomorphisms(&m, auts);
+  flatten_mappings(auts, width, out);
+  return out;
 }
 
 }  // namespace ob_shim

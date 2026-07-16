@@ -86,6 +86,9 @@ fn main() {
         );
     }
 
+    // Graph automorphisms (T15): the order of the molecule's symmetry group.
+    println!("Automorphisms:     {}", mol.automorphisms().len());
+
     // 2D depiction (T6): render the skeletal structure to SVG (before adding
     // explicit H, for a cleaner drawing). A second CLI argument saves it.
     if let Some(svg) = mol.to_svg() {

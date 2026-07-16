@@ -193,6 +193,10 @@ Symmetry & canonical ordering:
   (atoms sharing a value are graph-equivalent), and `canonical_ranks` a
   repeatable, input-order-independent canonical labelling — both via OpenBabel's
   `OBGraphSym` / canonical-labelling algorithm.
+- `Molecule::substructure_search` finds every unique subgraph-isomorphism mapping
+  of a query molecule into this one (exact element/bond-order matching via
+  `OBQuery` + VF2), `has_substructure` is the boolean shortcut, and
+  `automorphisms` enumerates the molecule's graph automorphisms.
 
 Reactions:
 

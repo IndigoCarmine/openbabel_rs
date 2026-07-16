@@ -420,6 +420,14 @@ pub mod ffi {
         fn reaction_set_comment(r: Pin<&mut Reaction>, comment: &str);
         fn reaction_is_reversible(r: &Reaction) -> bool;
         fn reaction_set_reversible(r: Pin<&mut Reaction>, value: bool);
+
+        // Subgraph isomorphism & automorphisms (flat, `width` atoms per row).
+        fn mol_substructure_mappings(
+            query: &Molecule,
+            target: &Molecule,
+            width: &mut u32,
+        ) -> Vec<u32>;
+        fn mol_automorphisms(mol: &Molecule, width: &mut u32) -> Vec<u32>;
     }
 }
 
