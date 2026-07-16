@@ -241,6 +241,49 @@ impl Molecule {
         with_ob(|| ffi::mol_delete_hydrogens(self.inner.pin_mut()));
     }
 
+    /// Make the hydrogens on the atom at 0-based `index` explicit, leaving the
+    /// rest of the molecule untouched. Returns `false` for an invalid index.
+    pub fn add_hydrogens_to_atom(&mut self, index: u32) -> bool {
+        with_ob(|| ffi::mol_add_hydrogens_to_atom(self.inner.pin_mut(), index + 1))
+    }
+
+    /// Remove the explicit hydrogens attached to the atom at 0-based `index`.
+    /// Returns `false` for an invalid index.
+    pub fn remove_hydrogens_of_atom(&mut self, index: u32) -> bool {
+        with_ob(|| ffi::mol_delete_hydrogens_of_atom(self.inner.pin_mut(), index + 1))
+    }
+
+    /// Whether OpenBabel has aromaticity perception cached for this molecule.
+    pub fn has_aromatic_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_aromatic_perceived(self.as_inner()))
+    }
+
+    /// Whether the SSSR (ring perception) is cached for this molecule.
+    pub fn has_sssr_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_sssr_perceived(self.as_inner()))
+    }
+
+    /// Whether ring atom/bond membership has been perceived for this molecule.
+    pub fn has_ring_atoms_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_ring_atoms_perceived(self.as_inner()))
+    }
+
+    /// Whether biopolymer chains/residues have been perceived for this molecule.
+    pub fn has_chains_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_chains_perceived(self.as_inner()))
+    }
+
+    /// Whether hydrogens have been made explicit on this molecule.
+    pub fn has_hydrogens_added(&self) -> bool {
+        with_ob(|| ffi::mol_has_hydrogens_added(self.as_inner()))
+    }
+
+    /// Whether any atom has a non-zero coordinate (i.e. real geometry exists
+    /// rather than everything sitting at the origin).
+    pub fn has_nonzero_coords(&self) -> bool {
+        with_ob(|| ffi::mol_has_nonzero_coords(self.as_inner()))
+    }
+
     /// Evaluate a numeric descriptor plugin by id (e.g. `"logP"`, `"TPSA"`,
     /// `"MR"`, `"MW"`). Returns `None` if OpenBabel has no such descriptor.
     pub fn descriptor(&self, id: &str) -> Option<f64> {

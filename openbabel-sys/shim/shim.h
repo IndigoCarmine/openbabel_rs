@@ -531,4 +531,14 @@ bool atom_is_one_four(const Molecule &mol, uint32_t a, uint32_t b);
 // Ring sizes from the Large Set of Smallest Rings.
 rust::Vec<uint32_t> mol_lssr_sizes(const Molecule &mol);
 
+// --- Perception state flags & targeted hydrogen editing (atom idx 1-based) --
+bool mol_has_aromatic_perceived(const Molecule &mol);
+bool mol_has_sssr_perceived(const Molecule &mol);
+bool mol_has_ring_atoms_perceived(const Molecule &mol);
+bool mol_has_chains_perceived(const Molecule &mol);
+bool mol_has_hydrogens_added(const Molecule &mol);
+bool mol_has_nonzero_coords(const Molecule &mol);
+bool mol_add_hydrogens_to_atom(Molecule &mol, uint32_t idx);
+bool mol_delete_hydrogens_of_atom(Molecule &mol, uint32_t idx);
+
 }  // namespace ob_shim

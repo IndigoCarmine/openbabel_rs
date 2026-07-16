@@ -177,6 +177,11 @@ Construction & editing:
 - Arbitrary annotations: attach string key/value data to a molecule
   (`property` / `set_property`), an atom (`Atom::data` / `AtomMut::set_data`), or
   a bond (`Bond::data` / `BondMut::set_data`).
+- Targeted hydrogens & perception state: `add_hydrogens_to_atom` /
+  `remove_hydrogens_of_atom` edit the hydrogens on one atom, and the
+  `has_hydrogens_added` / `has_sssr_perceived` / `has_aromatic_perceived` /
+  `has_chains_perceived` / `has_ring_atoms_perceived` / `has_nonzero_coords`
+  flags report what OpenBabel has already perceived or built.
 
 Rings & multi-molecule I/O:
 

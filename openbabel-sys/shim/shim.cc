@@ -1885,4 +1885,36 @@ rust::Vec<uint32_t> mol_lssr_sizes(const Molecule &mol) {
   return out;
 }
 
+// --- Perception state flags & targeted hydrogen editing -------------------
+
+bool mol_has_aromatic_perceived(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasAromaticPerceived();
+}
+bool mol_has_sssr_perceived(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasSSSRPerceived();
+}
+bool mol_has_ring_atoms_perceived(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasRingAtomsAndBondsPerceived();
+}
+bool mol_has_chains_perceived(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasChainsPerceived();
+}
+bool mol_has_hydrogens_added(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasHydrogensAdded();
+}
+bool mol_has_nonzero_coords(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasNonZeroCoords();
+}
+
+// Add explicit hydrogens to just atom `idx` (1-based); false if out of range.
+bool mol_add_hydrogens_to_atom(Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? mol.mol.AddHydrogens(a) : false;
+}
+// Remove the explicit hydrogens attached to atom `idx` (1-based).
+bool mol_delete_hydrogens_of_atom(Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? mol.mol.DeleteHydrogens(a) : false;
+}
+
 }  // namespace ob_shim

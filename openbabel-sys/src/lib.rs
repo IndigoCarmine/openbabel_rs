@@ -465,6 +465,16 @@ pub mod ffi {
         fn atom_is_one_three(mol: &Molecule, a: u32, b: u32) -> bool;
         fn atom_is_one_four(mol: &Molecule, a: u32, b: u32) -> bool;
         fn mol_lssr_sizes(mol: &Molecule) -> Vec<u32>;
+
+        // Perception state flags & targeted hydrogen editing (atom idx 1-based).
+        fn mol_has_aromatic_perceived(mol: &Molecule) -> bool;
+        fn mol_has_sssr_perceived(mol: &Molecule) -> bool;
+        fn mol_has_ring_atoms_perceived(mol: &Molecule) -> bool;
+        fn mol_has_chains_perceived(mol: &Molecule) -> bool;
+        fn mol_has_hydrogens_added(mol: &Molecule) -> bool;
+        fn mol_has_nonzero_coords(mol: &Molecule) -> bool;
+        fn mol_add_hydrogens_to_atom(mol: Pin<&mut Molecule>, idx: u32) -> bool;
+        fn mol_delete_hydrogens_of_atom(mol: Pin<&mut Molecule>, idx: u32) -> bool;
     }
 }
 
