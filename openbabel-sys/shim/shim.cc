@@ -1982,4 +1982,154 @@ bool atom_is_axial(const Molecule &mol, uint32_t idx) {
   return a ? a->IsAxial() : false;
 }
 
+// --- Remaining perception-state flags (readers + setters) ------------------
+
+bool mol_has_lssr_perceived(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasLSSRPerceived();
+}
+bool mol_has_atom_types_perceived(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasAtomTypesPerceived();
+}
+bool mol_has_ring_types_perceived(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasRingTypesPerceived();
+}
+bool mol_has_chirality_perceived(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasChiralityPerceived();
+}
+bool mol_has_partial_charges_perceived(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasPartialChargesPerceived();
+}
+bool mol_has_hybridization_perceived(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasHybridizationPerceived();
+}
+bool mol_has_closure_bonds_perceived(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasClosureBondsPerceived();
+}
+bool mol_is_corrected_for_ph(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.IsCorrectedForPH();
+}
+bool mol_has_spin_multiplicity_assigned(const Molecule &mol) {
+  return const_cast<Molecule &>(mol).mol.HasSpinMultiplicityAssigned();
+}
+void mol_set_lssr_perceived(Molecule &mol, bool value) {
+  mol.mol.SetLSSRPerceived(value);
+}
+void mol_set_atom_types_perceived(Molecule &mol, bool value) {
+  mol.mol.SetAtomTypesPerceived(value);
+}
+void mol_set_ring_types_perceived(Molecule &mol, bool value) {
+  mol.mol.SetRingTypesPerceived(value);
+}
+void mol_set_chirality_perceived(Molecule &mol, bool value) {
+  mol.mol.SetChiralityPerceived(value);
+}
+void mol_set_partial_charges_perceived(Molecule &mol, bool value) {
+  mol.mol.SetPartialChargesPerceived(value);
+}
+void mol_set_hybridization_perceived(Molecule &mol, bool value) {
+  mol.mol.SetHybridizationPerceived(value);
+}
+void mol_set_closure_bonds_perceived(Molecule &mol, bool value) {
+  mol.mol.SetClosureBondsPerceived(value);
+}
+void mol_set_corrected_for_ph(Molecule &mol, bool value) {
+  mol.mol.SetCorrectedForPH(value);
+}
+void mol_set_spin_multiplicity_assigned(Molecule &mol, bool value) {
+  mol.mol.SetSpinMultiplicityAssigned(value);
+}
+
+// --- Atom functional-group / environment predicates ------------------------
+
+bool atom_is_carboxyl_oxygen(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsCarboxylOxygen() : false;
+}
+bool atom_is_phosphate_oxygen(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsPhosphateOxygen() : false;
+}
+bool atom_is_sulfate_oxygen(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsSulfateOxygen() : false;
+}
+bool atom_is_nitro_oxygen(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsNitroOxygen() : false;
+}
+bool atom_is_amide_nitrogen(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsAmideNitrogen() : false;
+}
+bool atom_is_aromatic_noxide(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsAromaticNOxide() : false;
+}
+bool atom_is_nonpolar_hydrogen(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsNonPolarHydrogen() : false;
+}
+bool atom_is_hbond_donor_h(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->IsHbondDonorH() : false;
+}
+uint32_t atom_count_free_oxygens(const Molecule &mol, uint32_t idx) {
+  const OpenBabel::OBAtom *a = atom_at(mol, idx);
+  return a ? static_cast<uint32_t>(a->CountFreeOxygens()) : 0;
+}
+uint32_t atom_count_free_sulfurs(const Molecule &mol, uint32_t idx) {
+  const OpenBabel::OBAtom *a = atom_at(mol, idx);
+  return a ? static_cast<uint32_t>(a->CountFreeSulfurs()) : 0;
+}
+uint32_t atom_count_ring_bonds(const Molecule &mol, uint32_t idx) {
+  const OpenBabel::OBAtom *a = atom_at(mol, idx);
+  return a ? static_cast<uint32_t>(a->CountRingBonds()) : 0;
+}
+double atom_smallest_bond_angle(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->SmallestBondAngle() : 0.0;
+}
+double atom_average_bond_angle(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBAtom *a = const_cast<OpenBabel::OBAtom *>(atom_at(mol, idx));
+  return a ? a->AverageBondAngle() : 0.0;
+}
+void atom_lewis_acid_base_counts(const Molecule &mol, uint32_t idx, int &acid, int &base) {
+  const OpenBabel::OBAtom *a = atom_at(mol, idx);
+  if (!a) {
+    acid = 0;
+    base = 0;
+    return;
+  }
+  std::pair<int, int> counts = a->LewisAcidBaseCounts();
+  acid = counts.first;
+  base = counts.second;
+}
+
+// --- Bond classification predicates -----------------------------------------
+
+bool bond_is_primary_amide(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBBond *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->IsPrimaryAmide() : false;
+}
+bool bond_is_secondary_amide(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBBond *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->IsSecondaryAmide() : false;
+}
+bool bond_is_tertiary_amide(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBBond *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->IsTertiaryAmide() : false;
+}
+bool bond_is_wedge_or_hash(const Molecule &mol, uint32_t idx) {
+  const OpenBabel::OBBond *b = bond_at(mol, idx);
+  return b ? b->IsWedgeOrHash() : false;  // IsWedgeOrHash is const
+}
+bool bond_is_cis_or_trans(const Molecule &mol, uint32_t idx) {
+  const OpenBabel::OBBond *b = bond_at(mol, idx);
+  return b ? b->IsCisOrTrans() : false;  // IsCisOrTrans is const
+}
+bool bond_is_double_bond_geometry(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBBond *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->IsDoubleBondGeometry() : false;
+}
+
 }  // namespace ob_shim

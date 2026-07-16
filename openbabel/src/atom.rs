@@ -183,6 +183,84 @@ impl<'mol> Atom<'mol> {
         crate::with_ob(|| ffi::atom_is_axial(self.mol, self.ob_idx))
     }
 
+    /// Whether this oxygen belongs to a carboxyl group (`-C(=O)O-`).
+    pub fn is_carboxyl_oxygen(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_carboxyl_oxygen(self.mol, self.ob_idx))
+    }
+
+    /// Whether this oxygen belongs to a phosphate group.
+    pub fn is_phosphate_oxygen(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_phosphate_oxygen(self.mol, self.ob_idx))
+    }
+
+    /// Whether this oxygen belongs to a sulfate group.
+    pub fn is_sulfate_oxygen(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_sulfate_oxygen(self.mol, self.ob_idx))
+    }
+
+    /// Whether this oxygen belongs to a nitro group (`-NO2`).
+    pub fn is_nitro_oxygen(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_nitro_oxygen(self.mol, self.ob_idx))
+    }
+
+    /// Whether this nitrogen is an amide nitrogen (`-C(=O)N<`).
+    pub fn is_amide_nitrogen(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_amide_nitrogen(self.mol, self.ob_idx))
+    }
+
+    /// Whether this is the nitrogen of an aromatic N-oxide.
+    pub fn is_aromatic_noxide(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_aromatic_noxide(self.mol, self.ob_idx))
+    }
+
+    /// Whether this is a non-polar hydrogen (one bonded to carbon), the
+    /// complement of [`is_polar_hydrogen`](Self::is_polar_hydrogen).
+    pub fn is_nonpolar_hydrogen(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_nonpolar_hydrogen(self.mol, self.ob_idx))
+    }
+
+    /// Whether this is a hydrogen attached to a hydrogen-bond donor.
+    pub fn is_hbond_donor_h(&self) -> bool {
+        crate::with_ob(|| ffi::atom_is_hbond_donor_h(self.mol, self.ob_idx))
+    }
+
+    /// Number of oxygen neighbours that carry only a single heavy-atom bond
+    /// (e.g. the terminal `=O` / `-O⁻` of an acid or its conjugate base).
+    pub fn free_oxygen_count(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_count_free_oxygens(self.mol, self.ob_idx))
+    }
+
+    /// Number of sulfur neighbours that carry only a single heavy-atom bond.
+    pub fn free_sulfur_count(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_count_free_sulfurs(self.mol, self.ob_idx))
+    }
+
+    /// Number of this atom's bonds that are ring bonds.
+    pub fn ring_bond_count(&self) -> u32 {
+        crate::with_ob(|| ffi::atom_count_ring_bonds(self.mol, self.ob_idx))
+    }
+
+    /// Smallest angle (in degrees) between two bonds to this atom. Requires 3D
+    /// coordinates to be meaningful.
+    pub fn smallest_bond_angle(&self) -> f64 {
+        crate::with_ob(|| ffi::atom_smallest_bond_angle(self.mol, self.ob_idx))
+    }
+
+    /// Average angle (in degrees) between the bonds to this atom. Requires 3D
+    /// coordinates to be meaningful.
+    pub fn average_bond_angle(&self) -> f64 {
+        crate::with_ob(|| ffi::atom_average_bond_angle(self.mol, self.ob_idx))
+    }
+
+    /// Lewis acid/base vacancy counts as `(acid, base)`: the number of electron
+    /// pairs this atom can accept (acid) and donate (base).
+    pub fn lewis_acid_base_counts(&self) -> (i32, i32) {
+        let mut acid = 0;
+        let mut base = 0;
+        crate::with_ob(|| ffi::atom_lewis_acid_base_counts(self.mol, self.ob_idx, &mut acid, &mut base));
+        (acid, base)
+    }
+
     /// Number of rings this atom belongs to.
     pub fn ring_count(&self) -> u32 {
         crate::with_ob(|| ffi::atom_member_of_ring_count(self.mol, self.ob_idx))

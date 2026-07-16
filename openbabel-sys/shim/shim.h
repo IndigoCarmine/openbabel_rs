@@ -566,4 +566,57 @@ void mol_set_hydrogens_added(Molecule &mol, bool value);
 // them or for a non-ring substituent.
 bool atom_is_axial(const Molecule &mol, uint32_t idx);
 
+// --- Remaining perception-state flags (readers + setters) ------------------
+// Complete the OBMol perception-flag surface begun in the two blocks above.
+// Each reader mirrors an OBMol Has*/Is* query; each setter takes a bool
+// (true = mark the stage perceived so OpenBabel skips it, false = clear it).
+bool mol_has_lssr_perceived(const Molecule &mol);
+bool mol_has_atom_types_perceived(const Molecule &mol);
+bool mol_has_ring_types_perceived(const Molecule &mol);
+bool mol_has_chirality_perceived(const Molecule &mol);
+bool mol_has_partial_charges_perceived(const Molecule &mol);
+bool mol_has_hybridization_perceived(const Molecule &mol);
+bool mol_has_closure_bonds_perceived(const Molecule &mol);
+bool mol_is_corrected_for_ph(const Molecule &mol);
+bool mol_has_spin_multiplicity_assigned(const Molecule &mol);
+void mol_set_lssr_perceived(Molecule &mol, bool value);
+void mol_set_atom_types_perceived(Molecule &mol, bool value);
+void mol_set_ring_types_perceived(Molecule &mol, bool value);
+void mol_set_chirality_perceived(Molecule &mol, bool value);
+void mol_set_partial_charges_perceived(Molecule &mol, bool value);
+void mol_set_hybridization_perceived(Molecule &mol, bool value);
+void mol_set_closure_bonds_perceived(Molecule &mol, bool value);
+void mol_set_corrected_for_ph(Molecule &mol, bool value);
+void mol_set_spin_multiplicity_assigned(Molecule &mol, bool value);
+
+// --- Atom functional-group / environment predicates (atom idx 1-based) -----
+// Thin wrappers over OBAtom classification queries, completing the predicate
+// surface alongside is_chiral / is_metal / is_axial. All return false / 0 for
+// an out-of-range index.
+bool atom_is_carboxyl_oxygen(const Molecule &mol, uint32_t idx);
+bool atom_is_phosphate_oxygen(const Molecule &mol, uint32_t idx);
+bool atom_is_sulfate_oxygen(const Molecule &mol, uint32_t idx);
+bool atom_is_nitro_oxygen(const Molecule &mol, uint32_t idx);
+bool atom_is_amide_nitrogen(const Molecule &mol, uint32_t idx);
+bool atom_is_aromatic_noxide(const Molecule &mol, uint32_t idx);
+bool atom_is_nonpolar_hydrogen(const Molecule &mol, uint32_t idx);
+bool atom_is_hbond_donor_h(const Molecule &mol, uint32_t idx);
+// Terminal (single-heavy-valence) O / S neighbours, and ring-bond count.
+uint32_t atom_count_free_oxygens(const Molecule &mol, uint32_t idx);
+uint32_t atom_count_free_sulfurs(const Molecule &mol, uint32_t idx);
+uint32_t atom_count_ring_bonds(const Molecule &mol, uint32_t idx);
+// Smallest / average angle (degrees) between bonds to this atom; needs 3D.
+double atom_smallest_bond_angle(const Molecule &mol, uint32_t idx);
+double atom_average_bond_angle(const Molecule &mol, uint32_t idx);
+// Lewis acid/base vacancy counts: writes acid count to `acid`, base to `base`.
+void atom_lewis_acid_base_counts(const Molecule &mol, uint32_t idx, int &acid, int &base);
+
+// --- Bond classification predicates (bond idx 0-based) ---------------------
+bool bond_is_primary_amide(const Molecule &mol, uint32_t idx);
+bool bond_is_secondary_amide(const Molecule &mol, uint32_t idx);
+bool bond_is_tertiary_amide(const Molecule &mol, uint32_t idx);
+bool bond_is_wedge_or_hash(const Molecule &mol, uint32_t idx);  // 2D stereo, direction from narrow end
+bool bond_is_cis_or_trans(const Molecule &mol, uint32_t idx);   // flagged cis/trans 2D stereo bond
+bool bond_is_double_bond_geometry(const Molecule &mol, uint32_t idx);
+
 }  // namespace ob_shim

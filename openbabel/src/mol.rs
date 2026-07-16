@@ -319,6 +319,108 @@ impl Molecule {
         with_ob(|| ffi::mol_set_hydrogens_added(self.inner.pin_mut(), value));
     }
 
+    /// Whether the Largest Set of Smallest Rings has been perceived and cached.
+    /// See [`lssr_ring_sizes`](Self::lssr_ring_sizes).
+    pub fn has_lssr_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_lssr_perceived(self.as_inner()))
+    }
+
+    /// Whether OpenBabel atom types have been perceived and cached.
+    pub fn has_atom_types_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_atom_types_perceived(self.as_inner()))
+    }
+
+    /// Whether ring types have been perceived and cached.
+    pub fn has_ring_types_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_ring_types_perceived(self.as_inner()))
+    }
+
+    /// Whether chirality has been perceived and cached.
+    pub fn has_chirality_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_chirality_perceived(self.as_inner()))
+    }
+
+    /// Whether partial charges have been assigned and cached.
+    pub fn has_partial_charges_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_partial_charges_perceived(self.as_inner()))
+    }
+
+    /// Whether atom hybridizations have been perceived and cached.
+    pub fn has_hybridization_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_hybridization_perceived(self.as_inner()))
+    }
+
+    /// Whether ring-closure bonds have been perceived and cached.
+    pub fn has_closure_bonds_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_closure_bonds_perceived(self.as_inner()))
+    }
+
+    /// Whether the molecule has been (de)protonation-corrected for a pH (the
+    /// flag set by [`add_hydrogens_for_ph`](Self::add_hydrogens_for_ph)).
+    pub fn is_corrected_for_ph(&self) -> bool {
+        with_ob(|| ffi::mol_is_corrected_for_ph(self.as_inner()))
+    }
+
+    /// Whether radical spin multiplicities have been assigned (the flag set by
+    /// [`assign_spin_multiplicity`](Self::assign_spin_multiplicity)).
+    pub fn has_spin_multiplicity_assigned(&self) -> bool {
+        with_ob(|| ffi::mol_has_spin_multiplicity_assigned(self.as_inner()))
+    }
+
+    /// Override the cached LSSR-perception flag (setter behind
+    /// [`has_lssr_perceived`](Self::has_lssr_perceived)).
+    pub fn set_lssr_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_lssr_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached atom-type-perception flag (setter behind
+    /// [`has_atom_types_perceived`](Self::has_atom_types_perceived)).
+    pub fn set_atom_types_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_atom_types_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached ring-type-perception flag (setter behind
+    /// [`has_ring_types_perceived`](Self::has_ring_types_perceived)).
+    pub fn set_ring_types_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_ring_types_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached chirality-perception flag (setter behind
+    /// [`has_chirality_perceived`](Self::has_chirality_perceived)).
+    pub fn set_chirality_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_chirality_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached partial-charge-perception flag (setter behind
+    /// [`has_partial_charges_perceived`](Self::has_partial_charges_perceived)).
+    pub fn set_partial_charges_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_partial_charges_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached hybridization-perception flag (setter behind
+    /// [`has_hybridization_perceived`](Self::has_hybridization_perceived)).
+    pub fn set_hybridization_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_hybridization_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached closure-bond-perception flag (setter behind
+    /// [`has_closure_bonds_perceived`](Self::has_closure_bonds_perceived)).
+    pub fn set_closure_bonds_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_closure_bonds_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached pH-correction flag (setter behind
+    /// [`is_corrected_for_ph`](Self::is_corrected_for_ph)).
+    pub fn set_corrected_for_ph(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_corrected_for_ph(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached spin-multiplicity-assigned flag (setter behind
+    /// [`has_spin_multiplicity_assigned`](Self::has_spin_multiplicity_assigned)).
+    pub fn set_spin_multiplicity_assigned(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_spin_multiplicity_assigned(self.inner.pin_mut(), value));
+    }
+
     /// Evaluate a numeric descriptor plugin by id (e.g. `"logP"`, `"TPSA"`,
     /// `"MR"`, `"MW"`). Returns `None` if OpenBabel has no such descriptor.
     pub fn descriptor(&self, id: &str) -> Option<f64> {

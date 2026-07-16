@@ -68,6 +68,21 @@ impl<'mol> Bond<'mol> {
         crate::with_ob(|| ffi::bond_is_amide(self.mol, self.ob_idx))
     }
 
+    /// Whether this bond is the C–N bond of a **primary** amide (`-C(=O)NH2`).
+    pub fn is_primary_amide(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_primary_amide(self.mol, self.ob_idx))
+    }
+
+    /// Whether this bond is the C–N bond of a **secondary** amide (`-C(=O)NH-`).
+    pub fn is_secondary_amide(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_secondary_amide(self.mol, self.ob_idx))
+    }
+
+    /// Whether this bond is the C–N bond of a **tertiary** amide (`-C(=O)N<`).
+    pub fn is_tertiary_amide(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_tertiary_amide(self.mol, self.ob_idx))
+    }
+
     /// Whether this bond is the C–O single bond of an ester.
     pub fn is_ester(&self) -> bool {
         crate::with_ob(|| ffi::bond_is_ester(self.mol, self.ob_idx))
@@ -115,6 +130,26 @@ impl<'mol> Bond<'mol> {
     /// in a 2D depiction.
     pub fn is_hash(&self) -> bool {
         crate::with_ob(|| ffi::bond_is_hash(self.mol, self.ob_idx))
+    }
+
+    /// Whether this bond is flagged as a wedge-or-hash stereo bond in a 2D
+    /// depiction — a stereo cue whose direction runs from the narrow end,
+    /// without yet committing to wedge vs hash. Distinct from the specific
+    /// [`is_wedge`](Self::is_wedge) / [`is_hash`](Self::is_hash) flags.
+    pub fn is_wedge_or_hash(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_wedge_or_hash(self.mol, self.ob_idx))
+    }
+
+    /// Whether this bond is flagged as a cis/trans (directional) stereo bond in
+    /// a 2D depiction.
+    pub fn is_cis_or_trans(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_cis_or_trans(self.mol, self.ob_idx))
+    }
+
+    /// Whether this double bond has defined cis/trans geometry (its substituents
+    /// have determinable stereo directions).
+    pub fn is_double_bond_geometry(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_double_bond_geometry(self.mol, self.ob_idx))
     }
 }
 
