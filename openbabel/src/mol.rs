@@ -512,6 +512,12 @@ impl Molecule {
         with_ob(|| ffi::mol_center(self.inner.pin_mut()));
     }
 
+    /// Distance (in ångström) between atoms `i` and `j` (0-based indices).
+    /// Requires coordinates; returns `0.0` for invalid indices.
+    pub fn distance(&self, i: u32, j: u32) -> f64 {
+        with_ob(|| ffi::mol_distance(self.as_inner(), i + 1, j + 1))
+    }
+
     /// Valence angle (in degrees) at atom `j` between atoms `i`, `j`, `k`
     /// (0-based indices). Requires coordinates; returns `0.0` for invalid
     /// indices.

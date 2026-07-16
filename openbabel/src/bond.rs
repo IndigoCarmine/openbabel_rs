@@ -104,6 +104,18 @@ impl<'mol> Bond<'mol> {
         let value = crate::with_ob(|| ffi::bond_get_data(self.mol, self.ob_idx, key, &mut ok));
         ok.then_some(value)
     }
+
+    /// Whether this bond is drawn as a **wedge** (pointing toward the viewer) in
+    /// a 2D depiction — a stereo cue set on the narrow-to-wide bond direction.
+    pub fn is_wedge(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_wedge(self.mol, self.ob_idx))
+    }
+
+    /// Whether this bond is drawn as a **hash** (pointing away from the viewer)
+    /// in a 2D depiction.
+    pub fn is_hash(&self) -> bool {
+        crate::with_ob(|| ffi::bond_is_hash(self.mol, self.ob_idx))
+    }
 }
 
 impl std::fmt::Debug for Bond<'_> {
@@ -154,6 +166,20 @@ impl<'m> BondMut<'m> {
     /// later with [`Bond::data`].
     pub fn set_data(&mut self, key: &str, value: &str) -> &mut Self {
         crate::with_ob(|| ffi::bond_set_data(self.mol.as_inner_pin_mut(), self.ob_idx, key, value));
+        self
+    }
+
+    /// Mark (or clear) this bond as a 2D **wedge** — drawn pointing toward the
+    /// viewer, from its begin atom to its end atom. See [`Bond::is_wedge`].
+    pub fn set_wedge(&mut self, value: bool) -> &mut Self {
+        crate::with_ob(|| ffi::bond_set_wedge(self.mol.as_inner_pin_mut(), self.ob_idx, value));
+        self
+    }
+
+    /// Mark (or clear) this bond as a 2D **hash** — drawn pointing away from the
+    /// viewer. See [`Bond::is_hash`].
+    pub fn set_hash(&mut self, value: bool) -> &mut Self {
+        crate::with_ob(|| ffi::bond_set_hash(self.mol.as_inner_pin_mut(), self.ob_idx, value));
         self
     }
 }

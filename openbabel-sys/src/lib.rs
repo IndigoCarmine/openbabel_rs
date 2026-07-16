@@ -450,6 +450,13 @@ pub mod ffi {
         fn atom_get_data(mol: &Molecule, idx: u32, key: &str, ok: &mut bool) -> String;
         fn bond_set_data(mol: Pin<&mut Molecule>, idx: u32, key: &str, value: &str);
         fn bond_get_data(mol: &Molecule, idx: u32, key: &str, ok: &mut bool) -> String;
+
+        // Inter-atom distance (atoms 1-based) & 2D wedge/hash bond stereo.
+        fn mol_distance(mol: &Molecule, i: u32, j: u32) -> f64;
+        fn bond_is_wedge(mol: &Molecule, idx: u32) -> bool;
+        fn bond_is_hash(mol: &Molecule, idx: u32) -> bool;
+        fn bond_set_wedge(mol: Pin<&mut Molecule>, idx: u32, value: bool);
+        fn bond_set_hash(mol: Pin<&mut Molecule>, idx: u32, value: bool);
     }
 }
 

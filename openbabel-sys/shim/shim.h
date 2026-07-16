@@ -513,4 +513,13 @@ rust::String atom_get_data(const Molecule &mol, uint32_t idx, rust::Str key, boo
 void bond_set_data(Molecule &mol, uint32_t idx, rust::Str key, rust::Str value);
 rust::String bond_get_data(const Molecule &mol, uint32_t idx, rust::Str key, bool &ok);
 
+// --- Inter-atom distance & 2D wedge/hash bond stereo ----------------------
+// Distance (Å) between atoms `i`/`j` (1-based); 0.0 for invalid indices.
+double mol_distance(const Molecule &mol, uint32_t i, uint32_t j);
+// Bond idx is 0-based. Wedge/hash mark 2D depiction stereo direction.
+bool bond_is_wedge(const Molecule &mol, uint32_t idx);
+bool bond_is_hash(const Molecule &mol, uint32_t idx);
+void bond_set_wedge(Molecule &mol, uint32_t idx, bool value);
+void bond_set_hash(Molecule &mol, uint32_t idx, bool value);
+
 }  // namespace ob_shim

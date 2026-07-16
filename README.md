@@ -105,6 +105,8 @@ Stereochemistry:
   `cistrans_stereo_count` / `perceive_stereo`, `Atom::is_tetrahedral_stereo` /
   `stereo_winding` (a [`Winding`], clockwise/anticlockwise — OpenBabel's
   descriptor, not a CIP `R`/`S` label), `Bond::is_cistrans_stereo`.
+- 2D depiction stereo: read and set a bond's wedge/hash direction with
+  `Bond::is_wedge` / `is_hash` and `BondMut::set_wedge` / `set_hash`.
 
 Reaction / SMIRKS-like transforms:
 
@@ -132,9 +134,9 @@ Element data & extended queries:
 - Richer bond queries: `length`, `equilibrium_length`, `is_rotor`, `is_amide` /
   `is_ester` / `is_carbonyl` / `is_closure`.
 - Molecule extras: `num_heavy_atoms`, `num_rings`, `num_rotatable_bonds`,
-  `spaced_formula`, `spin_multiplicity`, `center`, `angle` / `torsion`
-  measurements, `clone`, `strip_salts`, `separate` (into fragments), and
-  string `property` / `set_property` metadata.
+  `spaced_formula`, `spin_multiplicity`, `center`, `distance` / `angle` /
+  `torsion` measurements, `clone`, `strip_salts`, `separate` (into fragments),
+  and string `property` / `set_property` metadata.
 
 Residues (biopolymer / PDB substructure):
 

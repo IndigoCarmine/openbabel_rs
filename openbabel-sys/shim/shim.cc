@@ -1815,4 +1815,36 @@ rust::String bond_get_data(const Molecule &mol, uint32_t idx, rust::Str key, boo
   }
 }
 
+// --- Inter-atom distance & 2D wedge/hash bond stereo ----------------------
+
+// Distance (Å) between atoms `i` and `j` (1-based); 0.0 for invalid indices.
+double mol_distance(const Molecule &mol, uint32_t i, uint32_t j) {
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    OpenBabel::OBAtom *a = m.GetAtom(static_cast<int>(i));
+    OpenBabel::OBAtom *b = m.GetAtom(static_cast<int>(j));
+    if (!a || !b) return 0.0;
+    return a->GetDistance(b);
+  } catch (...) {
+    return 0.0;
+  }
+}
+
+bool bond_is_wedge(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBBond *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->IsWedge() : false;
+}
+bool bond_is_hash(const Molecule &mol, uint32_t idx) {
+  OpenBabel::OBBond *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  return b ? b->IsHash() : false;
+}
+void bond_set_wedge(Molecule &mol, uint32_t idx, bool value) {
+  OpenBabel::OBBond *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  if (b) b->SetWedge(value);
+}
+void bond_set_hash(Molecule &mol, uint32_t idx, bool value) {
+  OpenBabel::OBBond *b = const_cast<OpenBabel::OBBond *>(bond_at(mol, idx));
+  if (b) b->SetHash(value);
+}
+
 }  // namespace ob_shim
