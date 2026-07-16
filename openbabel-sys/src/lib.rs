@@ -437,6 +437,13 @@ pub mod ffi {
             width: &mut u32,
         ) -> Vec<u32>;
         fn mol_automorphisms(mol: &Molecule, width: &mut u32) -> Vec<u32>;
+
+        // Geometry & topology (niche; atom indices 0-based).
+        fn mol_set_torsion(mol: Pin<&mut Molecule>, a: u32, b: u32, c: u32, d: u32, radians: f64);
+        fn mol_find_children(mol: &Molecule, from: u32, to: u32) -> Vec<u32>;
+        fn mol_largest_fragment(mol: &Molecule) -> Vec<u32>;
+        fn mol_set_total_charge(mol: Pin<&mut Molecule>, charge: i32);
+        fn mol_set_total_spin(mol: Pin<&mut Molecule>, spin: u32);
     }
 }
 

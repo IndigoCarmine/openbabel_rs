@@ -668,6 +668,44 @@ impl Molecule {
         chunk(flat, width as usize)
     }
 
+    /// Set the torsion angle defined by the four atoms at 0-based indices `a`,
+    /// `b`, `c`, `d` to `radians`, rotating the atoms on the far side of the
+    /// `b`–`c` bond. Requires 3D coordinates; out-of-range indices are ignored.
+    ///
+    /// The angle is in **radians** (OpenBabel's `SetTorsion` convention), unlike
+    /// [`torsion`](Self::torsion), which reports degrees.
+    pub fn set_torsion(&mut self, a: u32, b: u32, c: u32, d: u32, radians: f64) {
+        with_ob(|| ffi::mol_set_torsion(self.inner.pin_mut(), a, b, c, d, radians));
+    }
+
+    /// The 0-based indices of the atoms reachable from atom `to` without passing
+    /// back through atom `from` — i.e. the fragment on `to`'s side of the
+    /// `from`–`to` bond (excluding both endpoints). This is the set of atoms
+    /// that move when [`set_torsion`](Self::set_torsion) rotates that bond.
+    pub fn find_children(&self, from: u32, to: u32) -> Vec<u32> {
+        with_ob(|| ffi::mol_find_children(self.as_inner(), from, to))
+    }
+
+    /// The 0-based indices of the atoms in the largest connected fragment.
+    ///
+    /// Useful for isolating the main molecule from counter-ions or solvent
+    /// without modifying it (unlike [`strip_salts`](Self::strip_salts)).
+    pub fn largest_fragment_atoms(&self) -> Vec<u32> {
+        with_ob(|| ffi::mol_largest_fragment(self.as_inner()))
+    }
+
+    /// Set the molecule's total formal charge (used by some formats and
+    /// perception steps). See [`total_charge`](Self::total_charge) to read it.
+    pub fn set_total_charge(&mut self, charge: i32) {
+        with_ob(|| ffi::mol_set_total_charge(self.inner.pin_mut(), charge));
+    }
+
+    /// Set the molecule's total spin multiplicity (2S+1). See
+    /// [`spin_multiplicity`](Self::spin_multiplicity) to read it.
+    pub fn set_total_spin_multiplicity(&mut self, spin: u32) {
+        with_ob(|| ffi::mol_set_total_spin(self.inner.pin_mut(), spin));
+    }
+
     /// Whether this molecule carries crystallographic unit-cell information
     /// (present after reading a crystal format such as CIF).
     pub fn has_unit_cell(&self) -> bool {

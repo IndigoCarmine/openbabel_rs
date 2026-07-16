@@ -1,6 +1,7 @@
 #include "shim.h"
 
 #include <openbabel/atom.h>
+#include <openbabel/bitvec.h>
 #include <openbabel/bond.h>
 #include <openbabel/canon.h>
 #include <openbabel/chargemodel.h>
@@ -1704,6 +1705,50 @@ rust::Vec<uint32_t> mol_automorphisms(const Molecule &mol, uint32_t &width) {
   OpenBabel::FindAutomorphisms(&m, auts);
   flatten_mappings(auts, width, out);
   return out;
+}
+
+// --- Geometry & topology (niche) ------------------------------------------
+
+// Set the a-b-c-d torsion to `radians`, rotating the b-c bond's far side.
+// Atom indices are 0-based; a no-op if any is out of range.
+void mol_set_torsion(Molecule &mol, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
+                     double radians) {
+  try {
+    auto *pa = const_cast<OpenBabel::OBAtom *>(atom_at(mol, a + 1));
+    auto *pb = const_cast<OpenBabel::OBAtom *>(atom_at(mol, b + 1));
+    auto *pc = const_cast<OpenBabel::OBAtom *>(atom_at(mol, c + 1));
+    auto *pd = const_cast<OpenBabel::OBAtom *>(atom_at(mol, d + 1));
+    if (pa && pb && pc && pd) mol.mol.SetTorsion(pa, pb, pc, pd, radians);
+  } catch (...) {
+  }
+}
+
+// 0-based indices of the atoms reachable from `to` without passing back
+// through `from` (excludes both endpoints).
+rust::Vec<uint32_t> mol_find_children(const Molecule &mol, uint32_t from, uint32_t to) {
+  rust::Vec<uint32_t> out;
+  std::vector<int> children;  // 1-based
+  const_cast<Molecule &>(mol).mol.FindChildren(children, static_cast<int>(from) + 1,
+                                               static_cast<int>(to) + 1);
+  for (int i : children) out.push_back(static_cast<uint32_t>(i) - 1);
+  return out;
+}
+
+// 0-based indices of the atoms in the largest connected fragment.
+rust::Vec<uint32_t> mol_largest_fragment(const Molecule &mol) {
+  rust::Vec<uint32_t> out;
+  OpenBabel::OBBitVec frag;
+  const_cast<Molecule &>(mol).mol.FindLargestFragment(frag);
+  for (int i = frag.NextBit(-1); i != frag.EndBit(); i = frag.NextBit(i))
+    out.push_back(static_cast<uint32_t>(i) - 1);  // bits are 1-based atom idx
+  return out;
+}
+
+void mol_set_total_charge(Molecule &mol, int32_t charge) {
+  mol.mol.SetTotalCharge(static_cast<int>(charge));
+}
+void mol_set_total_spin(Molecule &mol, uint32_t spin) {
+  mol.mol.SetTotalSpinMultiplicity(static_cast<unsigned int>(spin));
 }
 
 }  // namespace ob_shim

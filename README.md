@@ -168,6 +168,10 @@ Construction & editing:
   `connect_the_dots` (infer bonds from 3D coordinates) then
   `perceive_bond_orders`; `add_polar_hydrogens`, `add_hydrogens_for_ph` (pH-based
   (de)protonation), `convert_dative_bonds`, `assign_spin_multiplicity`.
+- Torsion & fragments: `set_torsion` rotates a bond to a target dihedral,
+  `find_children` returns the atoms that move with it, `largest_fragment_atoms`
+  isolates the main fragment from counter-ions, and `set_total_charge` /
+  `set_total_spin_multiplicity` set the molecule-level values.
 
 Rings & multi-molecule I/O:
 

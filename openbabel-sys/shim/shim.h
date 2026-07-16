@@ -495,4 +495,15 @@ rust::Vec<uint32_t> mol_substructure_mappings(const Molecule &query, const Molec
 // = one atom-index permutation (0-based) per automorphism.
 rust::Vec<uint32_t> mol_automorphisms(const Molecule &mol, uint32_t &width);
 
+// --- Geometry & topology (niche; atom indices 0-based) --------------------
+// Set the a-b-c-d torsion to `radians`, rotating the b-c bond's far side.
+void mol_set_torsion(Molecule &mol, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
+                     double radians);
+// Atoms reachable from `to` without passing back through `from` (excludes both).
+rust::Vec<uint32_t> mol_find_children(const Molecule &mol, uint32_t from, uint32_t to);
+// Atom indices of the largest connected fragment.
+rust::Vec<uint32_t> mol_largest_fragment(const Molecule &mol);
+void mol_set_total_charge(Molecule &mol, int32_t charge);
+void mol_set_total_spin(Molecule &mol, uint32_t spin);
+
 }  // namespace ob_shim
