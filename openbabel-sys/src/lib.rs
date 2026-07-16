@@ -475,6 +475,75 @@ pub mod ffi {
         fn mol_has_nonzero_coords(mol: &Molecule) -> bool;
         fn mol_add_hydrogens_to_atom(mol: Pin<&mut Molecule>, idx: u32) -> bool;
         fn mol_delete_hydrogens_of_atom(mol: Pin<&mut Molecule>, idx: u32) -> bool;
+
+        // Structured torsion / angle data: flat 0-based atom indices (3 per
+        // angle [vertex,a,b]; 4 per torsion [a,b,c,d]).
+        fn mol_find_angles(mol: &Molecule) -> Vec<u32>;
+        fn mol_find_torsions(mol: &Molecule) -> Vec<u32>;
+
+        // Perception-state flag setters (the setter side of the Has* queries).
+        fn mol_set_aromatic_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_sssr_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_ring_atoms_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_chains_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_hydrogens_added(mol: Pin<&mut Molecule>, value: bool);
+
+        // Axial / equatorial ring position (atom idx 1-based).
+        fn atom_is_axial(mol: &Molecule, idx: u32) -> bool;
+
+        // Remaining perception-state flags (readers + setters).
+        fn mol_has_lssr_perceived(mol: &Molecule) -> bool;
+        fn mol_has_atom_types_perceived(mol: &Molecule) -> bool;
+        fn mol_has_ring_types_perceived(mol: &Molecule) -> bool;
+        fn mol_has_chirality_perceived(mol: &Molecule) -> bool;
+        fn mol_has_partial_charges_perceived(mol: &Molecule) -> bool;
+        fn mol_has_hybridization_perceived(mol: &Molecule) -> bool;
+        fn mol_has_closure_bonds_perceived(mol: &Molecule) -> bool;
+        fn mol_is_corrected_for_ph(mol: &Molecule) -> bool;
+        fn mol_has_spin_multiplicity_assigned(mol: &Molecule) -> bool;
+        fn mol_set_lssr_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_atom_types_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_ring_types_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_chirality_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_partial_charges_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_hybridization_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_closure_bonds_perceived(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_corrected_for_ph(mol: Pin<&mut Molecule>, value: bool);
+        fn mol_set_spin_multiplicity_assigned(mol: Pin<&mut Molecule>, value: bool);
+
+        // Atom functional-group / environment predicates (atom idx 1-based).
+        fn atom_is_carboxyl_oxygen(mol: &Molecule, idx: u32) -> bool;
+        fn atom_is_phosphate_oxygen(mol: &Molecule, idx: u32) -> bool;
+        fn atom_is_sulfate_oxygen(mol: &Molecule, idx: u32) -> bool;
+        fn atom_is_nitro_oxygen(mol: &Molecule, idx: u32) -> bool;
+        fn atom_is_amide_nitrogen(mol: &Molecule, idx: u32) -> bool;
+        fn atom_is_aromatic_noxide(mol: &Molecule, idx: u32) -> bool;
+        fn atom_is_nonpolar_hydrogen(mol: &Molecule, idx: u32) -> bool;
+        fn atom_is_hbond_donor_h(mol: &Molecule, idx: u32) -> bool;
+        fn atom_count_free_oxygens(mol: &Molecule, idx: u32) -> u32;
+        fn atom_count_free_sulfurs(mol: &Molecule, idx: u32) -> u32;
+        fn atom_count_ring_bonds(mol: &Molecule, idx: u32) -> u32;
+        fn atom_smallest_bond_angle(mol: &Molecule, idx: u32) -> f64;
+        fn atom_average_bond_angle(mol: &Molecule, idx: u32) -> f64;
+        fn atom_lewis_acid_base_counts(mol: &Molecule, idx: u32, acid: &mut i32, base: &mut i32);
+
+        // Bond classification predicates (bond idx 0-based).
+        fn bond_is_primary_amide(mol: &Molecule, idx: u32) -> bool;
+        fn bond_is_secondary_amide(mol: &Molecule, idx: u32) -> bool;
+        fn bond_is_tertiary_amide(mol: &Molecule, idx: u32) -> bool;
+        fn bond_is_wedge_or_hash(mol: &Molecule, idx: u32) -> bool;
+        fn bond_is_cis_or_trans(mol: &Molecule, idx: u32) -> bool;
+        fn bond_is_double_bond_geometry(mol: &Molecule, idx: u32) -> bool;
+
+        // Whole-molecule graph descriptor vectors (one value per atom).
+        fn mol_graph_theoretical_distances(mol: &Molecule) -> Vec<u32>;
+        fn mol_graph_invariants(mol: &Molecule) -> Vec<u32>;
+        fn mol_graph_invariant_distances(mol: &Molecule) -> Vec<u32>;
+
+        // Ring extras (ring idx 0-based; atom idx 1-based for membership).
+        fn ring_type(mol: &Molecule, ring_idx: u32) -> String;
+        fn ring_root_atom(mol: &Molecule, ring_idx: u32) -> u32;
+        fn ring_contains_atom(mol: &Molecule, ring_idx: u32, atom_idx: u32) -> bool;
     }
 }
 

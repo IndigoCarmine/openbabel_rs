@@ -129,14 +129,24 @@ Element data & extended queries:
   `covalent_radius` / `vdw_radius` / `max_bonds`.
 - Richer atom queries: `type_name`, `isotope`, `atomic_mass` / `exact_mass`,
   `spin_multiplicity`, `heavy_degree` / `hetero_degree`, `is_chiral` /
-  `is_heteroatom` / `is_metal` / `is_polar_hydrogen`, ring membership
-  (`ring_count`, `smallest_ring_size`, `is_in_ring_size`).
-- Richer bond queries: `length`, `equilibrium_length`, `is_rotor`, `is_amide` /
-  `is_ester` / `is_carbonyl` / `is_closure`.
+  `is_heteroatom` / `is_metal` / `is_polar_hydrogen` / `is_nonpolar_hydrogen` /
+  `is_hbond_donor_h` / `is_axial` (axial vs equatorial on a saturated ring, from
+  3D geometry), functional-group tags (`is_carboxyl_oxygen` /
+  `is_phosphate_oxygen` / `is_sulfate_oxygen` / `is_nitro_oxygen` /
+  `is_amide_nitrogen` / `is_aromatic_noxide`), neighbour counts
+  (`free_oxygen_count` / `free_sulfur_count` / `ring_bond_count`),
+  `smallest_bond_angle` / `average_bond_angle`, `lewis_acid_base_counts`, and
+  ring membership (`ring_count`, `smallest_ring_size`, `is_in_ring_size`).
+- Richer bond queries: `length`, `equilibrium_length`, `is_rotor`, `is_amide`
+  (and `is_primary_amide` / `is_secondary_amide` / `is_tertiary_amide`) /
+  `is_ester` / `is_carbonyl` / `is_closure`, plus 2D/3D stereo flags
+  `is_wedge_or_hash` / `is_cis_or_trans` / `is_double_bond_geometry`.
 - Molecule extras: `num_heavy_atoms`, `num_rings`, `num_rotatable_bonds`,
   `spaced_formula`, `spin_multiplicity`, `center`, `distance` / `angle` /
-  `torsion` measurements, `clone`, `strip_salts`, `separate` (into fragments),
-  and string `property` / `set_property` metadata.
+  `torsion` measurements, `find_angles` / `find_torsions` (enumerate every
+  heavy-atom valence angle / torsion as atom-index tuples, from OpenBabel's
+  `OBAngleData` / `OBTorsionData`), `clone`, `strip_salts`, `separate` (into
+  fragments), and string `property` / `set_property` metadata.
 
 Residues (biopolymer / PDB substructure):
 
@@ -178,16 +188,26 @@ Construction & editing:
   (`property` / `set_property`), an atom (`Atom::data` / `AtomMut::set_data`), or
   a bond (`Bond::data` / `BondMut::set_data`).
 - Targeted hydrogens & perception state: `add_hydrogens_to_atom` /
-  `remove_hydrogens_of_atom` edit the hydrogens on one atom, and the
-  `has_hydrogens_added` / `has_sssr_perceived` / `has_aromatic_perceived` /
-  `has_chains_perceived` / `has_ring_atoms_perceived` / `has_nonzero_coords`
-  flags report what OpenBabel has already perceived or built.
+  `remove_hydrogens_of_atom` edit the hydrogens on one atom, and a full set of
+  `has_*_perceived` readers report what OpenBabel has already perceived or built
+  — `has_hydrogens_added`, `has_sssr_perceived`, `has_lssr_perceived`,
+  `has_aromatic_perceived`, `has_chains_perceived`, `has_ring_atoms_perceived`,
+  `has_ring_types_perceived`, `has_atom_types_perceived`,
+  `has_hybridization_perceived`, `has_chirality_perceived`,
+  `has_partial_charges_perceived`, `has_closure_bonds_perceived`,
+  `has_spin_multiplicity_assigned`, `is_corrected_for_ph`, and
+  `has_nonzero_coords`. Each flag-backed reader has a matching `set_*` setter
+  (`set_hydrogens_added`, `set_sssr_perceived`, `set_lssr_perceived`,
+  `set_aromatic_perceived`, `set_chains_perceived`, …) that overrides the cached
+  flag — mark a stage done to skip it, or clear it to force re-perception.
 
 Rings & multi-molecule I/O:
 
 - Ring perception (SSSR): `Molecule::rings` / `ring` yield a [`Ring`] with
-  `size`, `atom_indices`, and `is_aromatic`; `lssr_ring_sizes` gives the
-  alternative Large-Set-of-Smallest-Rings sizes.
+  `size`, `atom_indices`, `is_aromatic`, `contains_atom`, `ring_type` (the ring
+  typer's name, e.g. `"benzene"`), and `root_atom` (the heteroatom a heterocycle
+  is anchored on); `lssr_ring_sizes` gives the alternative Large-Set-of-Smallest-
+  Rings sizes.
 - Read or write many molecules at once: `Molecule::parse_many` (every record of
   a multi-SDF, one SMILES per line, …) and the free `write_many`.
 - Read and write files directly: `Molecule::read_file` / `read_file_many` /
@@ -216,7 +236,10 @@ Symmetry & canonical ordering:
 - `Molecule::symmetry_classes` returns a topological symmetry class per atom
   (atoms sharing a value are graph-equivalent), and `canonical_ranks` a
   repeatable, input-order-independent canonical labelling — both via OpenBabel's
-  `OBGraphSym` / canonical-labelling algorithm.
+  `OBGraphSym` / canonical-labelling algorithm. The lower-level graph descriptor
+  vectors are also exposed: `graph_theoretical_distances` (each atom's
+  eccentricity) and `graph_invariants` / `graph_invariant_distances` (the
+  Morgan-style invariants underlying the canonical ranking).
 - `Molecule::substructure_search` finds every unique subgraph-isomorphism mapping
   of a query molecule into this one (exact element/bond-order matching via
   `OBQuery` + VF2), `has_substructure` is the boolean shortcut, and
@@ -230,17 +253,6 @@ Reactions:
   RXN), inspect with `num_reactants` / `reactant` (and the product / agent
   equivalents), or build one up with `new` + `add_reactant` / `add_product` /
   `add_agent`. (To *apply* a reaction as a graph edit, use [`Transform`].)
-
-Graph navigation & crystallography:
-
-- Walk the molecular graph from an [`Atom`]: `neighbors`, `bonds`, `bond_to`
-  (the bond joining two atoms, if any), `count_bonds_of_order`, and
-  `explicit_hydrogen_count`; from a [`Bond`], `other_atom` crosses to the far
-  end. `Molecule::bond_between` looks up the bond between two atom indices.
-- Crystallographic unit cells (present after reading a CIF and similar):
-  `Molecule::has_unit_cell` / `unit_cell` yield a [`UnitCell`] with `lengths`,
-  `angles`, `volume`, `space_group`, `lattice_type` (a `LatticeType`), and
-  `to_fractional` / `to_cartesian` coordinate conversions.
 
 ## Thread safety
 

@@ -541,4 +541,99 @@ bool mol_has_nonzero_coords(const Molecule &mol);
 bool mol_add_hydrogens_to_atom(Molecule &mol, uint32_t idx);
 bool mol_delete_hydrogens_of_atom(Molecule &mol, uint32_t idx);
 
+// --- Structured torsion / angle data (OBTorsionData / OBAngleData) ----------
+// Enumerate every heavy-atom (non-hydrogen) valence angle / torsion via
+// OBMol::FindAngles / FindTorsions, then marshal the resulting OBAngleData /
+// OBTorsionData back out. The returned vector is flat with 0-based atom
+// indices: mol_find_angles packs 3 per angle ([vertex, a, b]); mol_find_torsions
+// packs 4 per torsion ([a, b, c, d]). Empty if there are no angles / torsions.
+rust::Vec<uint32_t> mol_find_angles(const Molecule &mol);
+rust::Vec<uint32_t> mol_find_torsions(const Molecule &mol);
+
+// --- Perception-state flag setters -----------------------------------------
+// Override OpenBabel's cached perception flags (the setter side of the Has*
+// queries): pass true to mark a stage as already done (so OpenBabel skips it),
+// false to clear it (forcing re-perception next time it is needed).
+void mol_set_aromatic_perceived(Molecule &mol, bool value);
+void mol_set_sssr_perceived(Molecule &mol, bool value);
+void mol_set_ring_atoms_perceived(Molecule &mol, bool value);
+void mol_set_chains_perceived(Molecule &mol, bool value);
+void mol_set_hydrogens_added(Molecule &mol, bool value);
+
+// --- Axial / equatorial ring position (atom idx 1-based) -------------------
+// Whether atom `idx` sits in an axial position on a ring, judged from the 3D
+// dihedral to the ring (OBAtom::IsAxial). Needs 3D coordinates; false without
+// them or for a non-ring substituent.
+bool atom_is_axial(const Molecule &mol, uint32_t idx);
+
+// --- Remaining perception-state flags (readers + setters) ------------------
+// Complete the OBMol perception-flag surface begun in the two blocks above.
+// Each reader mirrors an OBMol Has*/Is* query; each setter takes a bool
+// (true = mark the stage perceived so OpenBabel skips it, false = clear it).
+bool mol_has_lssr_perceived(const Molecule &mol);
+bool mol_has_atom_types_perceived(const Molecule &mol);
+bool mol_has_ring_types_perceived(const Molecule &mol);
+bool mol_has_chirality_perceived(const Molecule &mol);
+bool mol_has_partial_charges_perceived(const Molecule &mol);
+bool mol_has_hybridization_perceived(const Molecule &mol);
+bool mol_has_closure_bonds_perceived(const Molecule &mol);
+bool mol_is_corrected_for_ph(const Molecule &mol);
+bool mol_has_spin_multiplicity_assigned(const Molecule &mol);
+void mol_set_lssr_perceived(Molecule &mol, bool value);
+void mol_set_atom_types_perceived(Molecule &mol, bool value);
+void mol_set_ring_types_perceived(Molecule &mol, bool value);
+void mol_set_chirality_perceived(Molecule &mol, bool value);
+void mol_set_partial_charges_perceived(Molecule &mol, bool value);
+void mol_set_hybridization_perceived(Molecule &mol, bool value);
+void mol_set_closure_bonds_perceived(Molecule &mol, bool value);
+void mol_set_corrected_for_ph(Molecule &mol, bool value);
+void mol_set_spin_multiplicity_assigned(Molecule &mol, bool value);
+
+// --- Atom functional-group / environment predicates (atom idx 1-based) -----
+// Thin wrappers over OBAtom classification queries, completing the predicate
+// surface alongside is_chiral / is_metal / is_axial. All return false / 0 for
+// an out-of-range index.
+bool atom_is_carboxyl_oxygen(const Molecule &mol, uint32_t idx);
+bool atom_is_phosphate_oxygen(const Molecule &mol, uint32_t idx);
+bool atom_is_sulfate_oxygen(const Molecule &mol, uint32_t idx);
+bool atom_is_nitro_oxygen(const Molecule &mol, uint32_t idx);
+bool atom_is_amide_nitrogen(const Molecule &mol, uint32_t idx);
+bool atom_is_aromatic_noxide(const Molecule &mol, uint32_t idx);
+bool atom_is_nonpolar_hydrogen(const Molecule &mol, uint32_t idx);
+bool atom_is_hbond_donor_h(const Molecule &mol, uint32_t idx);
+// Terminal (single-heavy-valence) O / S neighbours, and ring-bond count.
+uint32_t atom_count_free_oxygens(const Molecule &mol, uint32_t idx);
+uint32_t atom_count_free_sulfurs(const Molecule &mol, uint32_t idx);
+uint32_t atom_count_ring_bonds(const Molecule &mol, uint32_t idx);
+// Smallest / average angle (degrees) between bonds to this atom; needs 3D.
+double atom_smallest_bond_angle(const Molecule &mol, uint32_t idx);
+double atom_average_bond_angle(const Molecule &mol, uint32_t idx);
+// Lewis acid/base vacancy counts: writes acid count to `acid`, base to `base`.
+void atom_lewis_acid_base_counts(const Molecule &mol, uint32_t idx, int &acid, int &base);
+
+// --- Bond classification predicates (bond idx 0-based) ---------------------
+bool bond_is_primary_amide(const Molecule &mol, uint32_t idx);
+bool bond_is_secondary_amide(const Molecule &mol, uint32_t idx);
+bool bond_is_tertiary_amide(const Molecule &mol, uint32_t idx);
+bool bond_is_wedge_or_hash(const Molecule &mol, uint32_t idx);  // 2D stereo, direction from narrow end
+bool bond_is_cis_or_trans(const Molecule &mol, uint32_t idx);   // flagged cis/trans 2D stereo bond
+bool bond_is_double_bond_geometry(const Molecule &mol, uint32_t idx);
+
+// --- Whole-molecule graph descriptor vectors (one value per atom, atom order)
+// GTD: graph-theoretical distance (BFS eccentricity over heavy atoms). GI/GID:
+// graph-invariant labels (the Morgan-style invariants used in canonical
+// ordering). Empty on failure.
+rust::Vec<uint32_t> mol_graph_theoretical_distances(const Molecule &mol);
+rust::Vec<uint32_t> mol_graph_invariants(const Molecule &mol);
+rust::Vec<uint32_t> mol_graph_invariant_distances(const Molecule &mol);
+
+// --- Ring extras (ring_idx 0-based; atom idx 1-based for membership) --------
+// Ring type name from the ring typer (e.g. "benzene"); empty if unperceived.
+rust::String ring_type(const Molecule &mol, uint32_t ring_idx);
+// Root atom index (1-based) OpenBabel assigns to the ring — the heteroatom for
+// heterocycles; 0 for an all-carbon ring or if none applies.
+uint32_t ring_root_atom(const Molecule &mol, uint32_t ring_idx);
+// Whether atom `atom_idx` (1-based) is a member of ring `ring_idx`.
+bool ring_contains_atom(const Molecule &mol, uint32_t ring_idx, uint32_t atom_idx);
+
 }  // namespace ob_shim

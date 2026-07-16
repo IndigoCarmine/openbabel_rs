@@ -39,6 +39,25 @@ impl<'mol> Ring<'mol> {
     pub fn is_aromatic(&self) -> bool {
         crate::with_ob(|| ffi::ring_is_aromatic(self.mol, self.idx))
     }
+
+    /// The ring's type name as classified by OpenBabel's ring typer (e.g.
+    /// `"benzene"`). Empty if ring-type perception has not run for the molecule.
+    pub fn ring_type(&self) -> String {
+        crate::with_ob(|| ffi::ring_type(self.mol, self.idx))
+    }
+
+    /// The 0-based index of the ring's root atom — the heteroatom OpenBabel
+    /// anchors the ring on (O for furan, N for pyrrole, …). `None` for an
+    /// all-carbon ring, which has no distinguished root.
+    pub fn root_atom(&self) -> Option<u32> {
+        let one_based = crate::with_ob(|| ffi::ring_root_atom(self.mol, self.idx));
+        (one_based != 0).then(|| one_based - 1)
+    }
+
+    /// Whether `atom` is a member of this ring.
+    pub fn contains_atom(&self, atom: &crate::Atom<'mol>) -> bool {
+        crate::with_ob(|| ffi::ring_contains_atom(self.mol, self.idx, atom.ob_idx))
+    }
 }
 
 impl std::fmt::Debug for Ring<'_> {

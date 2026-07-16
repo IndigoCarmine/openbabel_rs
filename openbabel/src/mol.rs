@@ -284,6 +284,143 @@ impl Molecule {
         with_ob(|| ffi::mol_has_nonzero_coords(self.as_inner()))
     }
 
+    /// Override the cached aromaticity-perception flag (the setter behind
+    /// [`has_aromatic_perceived`](Self::has_aromatic_perceived)). Pass `true` to
+    /// mark aromaticity as already perceived — OpenBabel then trusts the current
+    /// per-atom/bond aromatic flags instead of re-running its aromaticity typer —
+    /// or `false` to clear it and force re-perception the next time it is needed.
+    pub fn set_aromatic_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_aromatic_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached SSSR (ring-perception) flag (the setter behind
+    /// [`has_sssr_perceived`](Self::has_sssr_perceived)). `false` forces ring
+    /// perception to re-run the next time rings are queried.
+    pub fn set_sssr_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_sssr_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached ring-atom/bond-membership flag (the setter behind
+    /// [`has_ring_atoms_perceived`](Self::has_ring_atoms_perceived)).
+    pub fn set_ring_atoms_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_ring_atoms_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached chain/residue-perception flag (the setter behind
+    /// [`has_chains_perceived`](Self::has_chains_perceived)).
+    pub fn set_chains_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_chains_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached "hydrogens added" flag (the setter behind
+    /// [`has_hydrogens_added`](Self::has_hydrogens_added)). This only sets the
+    /// bookkeeping flag; it does not add or remove any atoms.
+    pub fn set_hydrogens_added(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_hydrogens_added(self.inner.pin_mut(), value));
+    }
+
+    /// Whether the Largest Set of Smallest Rings has been perceived and cached.
+    /// See [`lssr_ring_sizes`](Self::lssr_ring_sizes).
+    pub fn has_lssr_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_lssr_perceived(self.as_inner()))
+    }
+
+    /// Whether OpenBabel atom types have been perceived and cached.
+    pub fn has_atom_types_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_atom_types_perceived(self.as_inner()))
+    }
+
+    /// Whether ring types have been perceived and cached.
+    pub fn has_ring_types_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_ring_types_perceived(self.as_inner()))
+    }
+
+    /// Whether chirality has been perceived and cached.
+    pub fn has_chirality_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_chirality_perceived(self.as_inner()))
+    }
+
+    /// Whether partial charges have been assigned and cached.
+    pub fn has_partial_charges_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_partial_charges_perceived(self.as_inner()))
+    }
+
+    /// Whether atom hybridizations have been perceived and cached.
+    pub fn has_hybridization_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_hybridization_perceived(self.as_inner()))
+    }
+
+    /// Whether ring-closure bonds have been perceived and cached.
+    pub fn has_closure_bonds_perceived(&self) -> bool {
+        with_ob(|| ffi::mol_has_closure_bonds_perceived(self.as_inner()))
+    }
+
+    /// Whether the molecule has been (de)protonation-corrected for a pH (the
+    /// flag set by [`add_hydrogens_for_ph`](Self::add_hydrogens_for_ph)).
+    pub fn is_corrected_for_ph(&self) -> bool {
+        with_ob(|| ffi::mol_is_corrected_for_ph(self.as_inner()))
+    }
+
+    /// Whether radical spin multiplicities have been assigned (the flag set by
+    /// [`assign_spin_multiplicity`](Self::assign_spin_multiplicity)).
+    pub fn has_spin_multiplicity_assigned(&self) -> bool {
+        with_ob(|| ffi::mol_has_spin_multiplicity_assigned(self.as_inner()))
+    }
+
+    /// Override the cached LSSR-perception flag (setter behind
+    /// [`has_lssr_perceived`](Self::has_lssr_perceived)).
+    pub fn set_lssr_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_lssr_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached atom-type-perception flag (setter behind
+    /// [`has_atom_types_perceived`](Self::has_atom_types_perceived)).
+    pub fn set_atom_types_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_atom_types_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached ring-type-perception flag (setter behind
+    /// [`has_ring_types_perceived`](Self::has_ring_types_perceived)).
+    pub fn set_ring_types_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_ring_types_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached chirality-perception flag (setter behind
+    /// [`has_chirality_perceived`](Self::has_chirality_perceived)).
+    pub fn set_chirality_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_chirality_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached partial-charge-perception flag (setter behind
+    /// [`has_partial_charges_perceived`](Self::has_partial_charges_perceived)).
+    pub fn set_partial_charges_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_partial_charges_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached hybridization-perception flag (setter behind
+    /// [`has_hybridization_perceived`](Self::has_hybridization_perceived)).
+    pub fn set_hybridization_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_hybridization_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached closure-bond-perception flag (setter behind
+    /// [`has_closure_bonds_perceived`](Self::has_closure_bonds_perceived)).
+    pub fn set_closure_bonds_perceived(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_closure_bonds_perceived(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached pH-correction flag (setter behind
+    /// [`is_corrected_for_ph`](Self::is_corrected_for_ph)).
+    pub fn set_corrected_for_ph(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_corrected_for_ph(self.inner.pin_mut(), value));
+    }
+
+    /// Override the cached spin-multiplicity-assigned flag (setter behind
+    /// [`has_spin_multiplicity_assigned`](Self::has_spin_multiplicity_assigned)).
+    pub fn set_spin_multiplicity_assigned(&mut self, value: bool) {
+        with_ob(|| ffi::mol_set_spin_multiplicity_assigned(self.inner.pin_mut(), value));
+    }
+
     /// Evaluate a numeric descriptor plugin by id (e.g. `"logP"`, `"TPSA"`,
     /// `"MR"`, `"MW"`). Returns `None` if OpenBabel has no such descriptor.
     pub fn descriptor(&self, id: &str) -> Option<f64> {
@@ -575,6 +712,40 @@ impl Molecule {
         with_ob(|| ffi::mol_torsion(self.as_inner(), i + 1, j + 1, k + 1, l + 1))
     }
 
+    /// Every valence angle in the molecule, as `[vertex, a, b]` triples of
+    /// 0-based atom indices — the connectivity enumeration OpenBabel builds with
+    /// `OBMol::FindAngles` (`OBAngleData`). Only heavy atoms are considered
+    /// (hydrogens are skipped), and each angle appears once. Use
+    /// [`angle`](Self::angle) to measure the geometric value of one.
+    ///
+    /// The result is cached on the molecule, so later structural edits are not
+    /// reflected until the cache is cleared (e.g. via a fresh [`clone`]).
+    ///
+    /// [`clone`]: Self::clone
+    pub fn find_angles(&self) -> Vec<[u32; 3]> {
+        let flat = with_ob(|| ffi::mol_find_angles(self.as_inner()));
+        flat.chunks_exact(3)
+            .map(|c| [c[0], c[1], c[2]])
+            .collect()
+    }
+
+    /// Every torsion in the molecule, as `[a, b, c, d]` quads of 0-based atom
+    /// indices — the connectivity enumeration OpenBabel builds with
+    /// `OBMol::FindTorsions` (`OBTorsionData`), one quad per rotatable-bond
+    /// arrangement around each heavy-atom central bond (hydrogens are skipped).
+    /// Use [`torsion`](Self::torsion) to measure the dihedral value of one.
+    ///
+    /// The result is cached on the molecule, so later structural edits are not
+    /// reflected until the cache is cleared (e.g. via a fresh [`clone`]).
+    ///
+    /// [`clone`]: Self::clone
+    pub fn find_torsions(&self) -> Vec<[u32; 4]> {
+        let flat = with_ob(|| ffi::mol_find_torsions(self.as_inner()));
+        flat.chunks_exact(4)
+            .map(|c| [c[0], c[1], c[2], c[3]])
+            .collect()
+    }
+
     /// Remove disconnected fragments (e.g. counterions) smaller than
     /// `min_atoms` atoms; `0` keeps only the single largest fragment. Returns
     /// `true` if anything was removed.
@@ -680,6 +851,30 @@ impl Molecule {
     /// canonical-labelling algorithm. Every atom gets a distinct rank.
     pub fn canonical_ranks(&self) -> Vec<u32> {
         with_ob(|| ffi::mol_canonical_ranks(self.as_inner()))
+    }
+
+    /// Graph-theoretical distance of every atom, in atom order: each atom's
+    /// eccentricity — the number of bonds to the farthest heavy atom reachable
+    /// from it. Terminal atoms have the largest values, central atoms the
+    /// smallest. Backed by OpenBabel's `OBMol::GetGTDVector`.
+    pub fn graph_theoretical_distances(&self) -> Vec<u32> {
+        with_ob(|| ffi::mol_graph_theoretical_distances(self.as_inner()))
+    }
+
+    /// Graph-invariant label of every atom, in atom order — the Morgan-style
+    /// initial invariants OpenBabel derives from local topology
+    /// (`OBMol::GetGIVector`). Atoms in equivalent environments share a value;
+    /// these feed the canonical labelling exposed by
+    /// [`canonical_ranks`](Self::canonical_ranks).
+    pub fn graph_invariants(&self) -> Vec<u32> {
+        with_ob(|| ffi::mol_graph_invariants(self.as_inner()))
+    }
+
+    /// Graph-invariant label of every atom refined by graph-theoretical distance
+    /// (`OBMol::GetGIDVector`), in atom order — a finer variant of
+    /// [`graph_invariants`](Self::graph_invariants).
+    pub fn graph_invariant_distances(&self) -> Vec<u32> {
+        with_ob(|| ffi::mol_graph_invariant_distances(self.as_inner()))
     }
 
     /// Find every unique way `query` occurs as a substructure of this molecule.
