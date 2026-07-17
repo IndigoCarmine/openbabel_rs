@@ -71,16 +71,54 @@ pub(crate) fn with_ob<R>(f: impl FnOnce() -> R) -> R {
     f()
 }
 
-/// Point OpenBabel at the format plugins and data files installed alongside the
-/// linked library.
+/// The plugin and data directories to hand OpenBabel, as
+/// `(BABEL_LIBDIR, BABEL_DATADIR)`.
+///
+/// A shipped application does not have the build machine's directories, so an
+/// application-relative layout wins when it is there: the `.obf` plugins next to
+/// the executable and the data directory at `<exe_dir>/data`. That mirrors what
+/// `openbabel-sys`'s build script already lays out on Windows, where OpenBabel
+/// finds plugins beside `openbabel-3.dll` regardless of `BABEL_LIBDIR`.
+///
+/// Both directories are decided together, from one signal, so a bundled data
+/// directory can never end up paired with the build tree's library or the other
+/// way round — data and library have to match.
+fn runtime_dirs(exe_dir: Option<&std::path::Path>) -> (String, String) {
+    let bundled = exe_dir.and_then(|dir| {
+        // The plugins sit beside the executable, but they are not the signal: a
+        // cargo target directory has them there too and yet wants the baked
+        // paths. Only a packaged application has the data directory beside it.
+        let data = dir.join("data");
+        if !data.is_dir() {
+            return None;
+        }
+        Some((dir.to_str()?.to_owned(), data.to_str()?.to_owned()))
+    });
+
+    bundled.unwrap_or_else(|| {
+        (
+            openbabel_sys::paths::BABEL_LIBDIR.to_owned(),
+            openbabel_sys::paths::BABEL_DATADIR.to_owned(),
+        )
+    })
+}
+
+/// Point OpenBabel at its format plugins and data files.
 ///
 /// OpenBabel loads its format plugins (`.obf`) from `BABEL_LIBDIR` and reads
-/// element/forcefield data from `BABEL_DATADIR`, both lazily on first use. We
-/// set them (unless already set in the environment) before any conversion
-/// happens. This runs at most once and is safe to call repeatedly; the public
-/// API calls it for you.
+/// element/forcefield data from `BABEL_DATADIR`, both lazily on first use, so
+/// they have to be set before any conversion happens. This runs at most once and
+/// is safe to call repeatedly; the public API calls it for you.
+///
+/// See [`runtime_dirs`] for where they end up pointing. To ship an application,
+/// put the `.obf` plugins (and, on Windows, `openbabel-3.dll`) next to the
+/// executable and the data directory at `<exe_dir>/data` — otherwise the binary
+/// depends on directories that only exist on the machine that built it.
 pub fn init() {
     INIT.call_once(|| {
+        let exe = std::env::current_exe().ok();
+        let (libdir, datadir) = runtime_dirs(exe.as_deref().and_then(|p| p.parent()));
+
         // Set via the C runtime (not std::env::set_var): on Windows OpenBabel
         // reads these with getenv(), which does not observe variables set
         // through the Win32 environment block that std::env uses.
@@ -89,9 +127,9 @@ pub fn init() {
         // install (e.g. an older release) commonly leaves BABEL_DATADIR
         // pointing at its own, version-mismatched data directory, which
         // silently breaks data-driven plugins (descriptors, some fingerprints).
-        // Our bundled data must match our bundled library.
-        openbabel_sys::ffi::set_env("BABEL_LIBDIR", openbabel_sys::paths::BABEL_LIBDIR);
-        openbabel_sys::ffi::set_env("BABEL_DATADIR", openbabel_sys::paths::BABEL_DATADIR);
+        // Our data must match our library.
+        openbabel_sys::ffi::set_env("BABEL_LIBDIR", &libdir);
+        openbabel_sys::ffi::set_env("BABEL_DATADIR", &datadir);
     });
 }
 
@@ -135,5 +173,57 @@ mod tests {
         let v = version();
         assert!(!v.is_empty(), "version string should not be empty");
         assert!(v.starts_with('3'), "unexpected OpenBabel version: {v:?}");
+    }
+
+    /// A packaged application: `data` sits beside the executable, so neither
+    /// directory may point back at the machine that built it.
+    #[test]
+    fn a_bundled_layout_wins_over_the_baked_paths() {
+        let tmp = std::env::temp_dir().join("openbabel_rs_bundled_layout");
+        let data = tmp.join("data");
+        std::fs::create_dir_all(&data).expect("create bundle");
+
+        let (libdir, datadir) = runtime_dirs(Some(&tmp));
+        assert_eq!(libdir, tmp.to_str().unwrap());
+        assert_eq!(datadir, data.to_str().unwrap());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// A cargo target directory has the plugins next to the test binary but no
+    /// `data`, so it has to keep using the build-time paths.
+    #[test]
+    fn a_build_tree_falls_back_to_the_baked_paths() {
+        let tmp = std::env::temp_dir().join("openbabel_rs_build_tree");
+        std::fs::create_dir_all(&tmp).expect("create dir");
+        std::fs::write(tmp.join("formats_common.obf"), b"").expect("plugin");
+
+        let (libdir, datadir) = runtime_dirs(Some(&tmp));
+        assert_eq!(libdir, openbabel_sys::paths::BABEL_LIBDIR);
+        assert_eq!(datadir, openbabel_sys::paths::BABEL_DATADIR);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn an_unknown_exe_location_falls_back_to_the_baked_paths() {
+        let (libdir, datadir) = runtime_dirs(None);
+        assert_eq!(libdir, openbabel_sys::paths::BABEL_LIBDIR);
+        assert_eq!(datadir, openbabel_sys::paths::BABEL_DATADIR);
+    }
+
+    /// The bug this resolution exists for: a data directory only the build
+    /// machine has means a shipped binary silently loses every data-driven
+    /// plugin — force fields included — while still starting up fine. A force
+    /// field's energy unit is read from that data, so it stands in for "the data
+    /// directory actually resolved".
+    #[test]
+    fn forcefield_data_resolves_after_init() {
+        init();
+        assert_eq!(
+            forcefield_energy_unit("MMFF94").as_deref(),
+            Some("kcal/mol"),
+            "force-field data did not load — BABEL_DATADIR is wrong"
+        );
     }
 }
