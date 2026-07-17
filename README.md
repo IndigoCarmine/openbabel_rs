@@ -326,6 +326,28 @@ println!("{}", mol.write("can")?.trim());          // canonical SMILES
   are runtime-inert (OpenBabel never calls those functions for InChI output).
   `inchi.dll` is copied alongside the other runtime DLLs.
 
+## Shipping an application
+
+`init()` points OpenBabel at its plugins and data. It prefers an
+**application-relative** layout and falls back to the absolute paths baked in at
+build time — which is what a cargo tree uses, and which exist only on the machine
+that built the binary. So a distributed binary needs the runtime beside it:
+
+```text
+your-app(.exe)
+openbabel-3.dll        # Windows only; Unix finds libopenbabel via rpath
+inchi.dll              # Windows only
+*.obf                  # every format/plugin file
+data/                  # the contents of BABEL_DATADIR from the build
+```
+
+`<exe_dir>/data` is what tells `init()` to use this layout. Without it the app
+still starts, but every data-driven plugin — force fields included — silently
+goes missing, and only on machines other than yours. Note that setting
+`BABEL_DATADIR` in the environment does **not** work: `init()` deliberately
+overrides it (a stale system OpenBabel install is the common case), so ship the
+layout instead.
+
 ## License
 
 This project is licensed **GPL-2.0-only** (see [`LICENSE`](LICENSE)): it links

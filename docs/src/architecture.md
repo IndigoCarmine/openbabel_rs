@@ -165,16 +165,47 @@ OpenBabel loads its format plugins (`.obf`) from `BABEL_LIBDIR` and reads
 element/forcefield data from `BABEL_DATADIR`, both lazily on first use. The safe
 API sets these for you, exactly once, via `init()` (called from `with_ob`):
 
-- The paths point at the plugin/data directories **bundled with the linked
-  library** (baked in by `build.rs`), so they always match the OpenBabel version
-  you built.
+- They resolve to one of two layouts, decided at startup:
+  1. **Application-relative** — the `.obf` plugins next to the executable and the
+     data directory at `<exe_dir>/data`. This is what a *shipped* binary uses.
+  2. **The build tree** — the absolute paths baked in by `build.rs`. This is what
+     `cargo run` / `cargo test` uses, and the fallback everywhere else.
+
+  `<exe_dir>/data` is the signal that selects layout 1: a cargo target directory
+  has the plugins beside the binary too, but only a packaged application has the
+  data directory there.
+- Both directories always come from the **same** layout. Pairing a bundled data
+  directory with the build tree's library (or the reverse) would mean data from
+  one OpenBabel and code from another.
 - They are set through the **C runtime** (`ffi::set_env`), not `std::env::set_var`.
   On Windows, OpenBabel reads them with `getenv()`, which does not observe
   variables set through the Win32 environment block that `std::env` uses.
 - `init()` **overrides** any pre-existing values. A stale system OpenBabel
   install often leaves `BABEL_DATADIR` pointing at its own, version-mismatched
   data directory, which silently breaks data-driven plugins (descriptors, some
-  fingerprints). The bundled data must match the bundled library.
+  fingerprints). The data must match the library. Setting `BABEL_DATADIR` before
+  launching therefore does **not** work — ship the application-relative layout
+  instead.
 
 You rarely call `init()` yourself — the public API does it — but it is `pub` and
 idempotent if you want to force it early.
+
+### Shipping an application {#shipping-an-application}
+
+The baked paths only exist on the machine that built the binary, so a binary
+distributed on its own loses every data-driven plugin — force fields included —
+while still starting up and reporting no error. Lay the runtime out next to the
+executable:
+
+```text
+your-app(.exe)
+openbabel-3.dll        # Windows only; Unix finds libopenbabel via rpath
+inchi.dll              # Windows only
+*.obf                  # every format/plugin file
+data/                  # the contents of BABEL_DATADIR from the build
+```
+
+On Windows `build.rs` already puts the DLLs and `.obf` files in
+`target/<profile>/`, so packaging those is a copy; the data directory has to come
+from the build tree, whose location is reported to dependent build scripts as
+`DEP_OPENBABEL_3_BABEL_DATADIR`.
