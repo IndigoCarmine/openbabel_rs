@@ -38,6 +38,22 @@
 //! minimizers combine it with a *fixed* internal gradient criterion; there is no
 //! public setter for a gradient tolerance, so this API does not expose one.
 //!
+//! Those minimizers also signal "converged" and "out of steps" with the same
+//! bare `false`, which makes a half-finished minimization look identical to a
+//! finished one. [`Optimization::stop_reason`] recovers the distinction, so
+//! **check it** rather than assuming a returned trajectory means a minimized
+//! geometry:
+//!
+//! ```no_run
+//! # use openbabel::{Minimizer, Molecule, StopReason};
+//! # let mut mol = Molecule::parse("CCO", "smi").unwrap();
+//! # let cfg = Minimizer::new("MMFF94");
+//! let run = mol.minimize(&cfg);
+//! if run.stop_reason() == StopReason::MaxSteps {
+//!     // Still descending — run again from the current coordinates to continue.
+//! }
+//! ```
+//!
 //! L-BFGS caveat: in the vendored OpenBabel 3.2.1 the L-BFGS minimizer corrupts
 //! the heap when paired with the **UFF** force field (a bug in that
 //! locally-added minimizer). That one pairing is refused — it returns `None` /
@@ -47,6 +63,36 @@
 use openbabel_sys::ffi;
 
 use crate::{with_ob, Constraints, Molecule};
+
+/// Why a minimization stopped.
+///
+/// OpenBabel's own `*TakeNSteps` entry points return a bare `false` for both
+/// "converged" and "out of steps", which makes an unfinished minimization
+/// indistinguishable from a finished one. This enum carries that distinction up
+/// from the shim so callers can decide whether to keep going.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StopReason {
+    /// OpenBabel's convergence criterion fired: the geometry is minimized.
+    Converged,
+    /// The step budget ran out with the geometry still moving. Run again from
+    /// the current coordinates to continue.
+    MaxSteps,
+    /// Unknown force field, setup failure, or an unsupported pairing. No
+    /// trajectory was produced.
+    Failed,
+}
+
+impl StopReason {
+    /// Decode the shim's `stop_reason` out-param. Must match the `OPT_STOP_*`
+    /// constants in `openbabel-sys/shim/shim.h`.
+    fn from_code(code: u32) -> Self {
+        match code {
+            0 => StopReason::Converged,
+            1 => StopReason::MaxSteps,
+            _ => StopReason::Failed,
+        }
+    }
+}
 
 /// Minimization algorithm.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -192,6 +238,8 @@ pub struct OptStep {
 /// inspect the path.
 pub struct Optimization {
     frames: std::vec::IntoIter<OptStep>,
+    stop_reason: StopReason,
+    steps_taken: u32,
 }
 
 impl Optimization {
@@ -199,8 +247,12 @@ impl Optimization {
         if !config.is_supported() {
             return Optimization {
                 frames: Vec::new().into_iter(),
+                stop_reason: StopReason::Failed,
+                steps_taken: 0,
             };
         }
+        let mut stop_code = 2u32; // OPT_STOP_FAILED
+        let mut steps_taken = 0u32;
         let flat = with_ob(|| {
             ffi::optimizer_run_trajectory(
                 mol.as_inner_pin_mut(),
@@ -210,6 +262,8 @@ impl Optimization {
                 config.energy_convergence,
                 config.constraints.as_inner(),
                 config.steps_per_frame,
+                &mut stop_code,
+                &mut steps_taken,
             )
         });
         // Each frame is [energy, x0, y0, z0, ...] — 1 + 3·num_atoms doubles.
@@ -217,7 +271,10 @@ impl Optimization {
         let mut frames = Vec::new();
         let mut cumulative = 0u32;
         for chunk in flat.chunks_exact(frame_len) {
-            cumulative += config.steps_per_frame;
+            // Every frame but the last advances a full `steps_per_frame`; the
+            // shim clamps the final chunk to whatever was left of the budget, so
+            // take the true total from `steps_taken` rather than overshooting it.
+            cumulative = (cumulative + config.steps_per_frame).min(steps_taken);
             let coordinates = chunk[1..].chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect();
             frames.push(OptStep {
                 step: cumulative,
@@ -227,7 +284,22 @@ impl Optimization {
         }
         Optimization {
             frames: frames.into_iter(),
+            stop_reason: StopReason::from_code(stop_code),
+            steps_taken,
         }
+    }
+
+    /// Why the minimization stopped. [`StopReason::MaxSteps`] means the geometry
+    /// was still moving when the budget ran out — the molecule is *not*
+    /// minimized, and running again from its current coordinates continues where
+    /// this left off.
+    pub fn stop_reason(&self) -> StopReason {
+        self.stop_reason
+    }
+
+    /// How many optimization steps actually ran.
+    pub fn steps_taken(&self) -> u32 {
+        self.steps_taken
     }
 }
 
@@ -253,6 +325,8 @@ impl std::fmt::Debug for Optimization {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Optimization")
             .field("remaining_frames", &self.frames.len())
+            .field("stop_reason", &self.stop_reason)
+            .field("steps_taken", &self.steps_taken)
             .finish()
     }
 }

@@ -566,6 +566,7 @@ impl Molecule {
     /// own optimizer to a few units of energy.
     pub fn optimize_geometry_rs(&mut self, forcefield: &str, steps: u32) -> Option<f64> {
         self.rust_optimize(forcefield, crate::Algorithm::ConjugateGradients, steps, 1e-6)
+            .map(|(energy, _)| energy)
     }
 
     /// Asynchronously energy-minimize the geometry with the **Rust numeric core**
@@ -595,6 +596,25 @@ impl Molecule {
         .expect("optimize_geometry_rs_async blocking task panicked")
     }
 
+    /// Energy-minimize with the **Rust numeric core**, reporting *why* the run
+    /// stopped alongside the final energy.
+    ///
+    /// [`optimize_geometry_rs`](Self::optimize_geometry_rs) hands back only an
+    /// energy, which cannot distinguish a minimized geometry from one that ran
+    /// out of steps. Use this when that difference matters: a
+    /// [`StopReason::MaxSteps`](crate::StopReason::MaxSteps) result means the
+    /// geometry is still descending, and calling again continues from it.
+    /// `None` if the force field has no Rust evaluator.
+    pub fn minimize_rs(
+        &mut self,
+        forcefield: &str,
+        algorithm: crate::Algorithm,
+        max_steps: u32,
+        econv: f64,
+    ) -> Option<(f64, crate::StopReason)> {
+        self.rust_optimize(forcefield, algorithm, max_steps, econv)
+    }
+
     /// The shared machinery behind [`optimize_geometry_rs`](Self::optimize_geometry_rs):
     /// export OpenBabel's precomputed terms, minimize in Rust (no OpenBabel calls
     /// in the loop), and write the relaxed geometry back. `None` if the force
@@ -605,13 +625,13 @@ impl Molecule {
         algorithm: crate::Algorithm,
         max_steps: u32,
         econv: f64,
-    ) -> Option<f64> {
+    ) -> Option<(f64, crate::StopReason)> {
         let flat = self.export_flat(forcefield);
         let model = crate::ff::build_model(forcefield, &flat)?;
         let start = self.coordinates();
         let out = crate::ff::minimize::minimize(model.as_ref(), &start, algorithm, max_steps, econv, 1);
         self.set_coordinates(&out.coords);
-        Some(out.energy)
+        Some((out.energy, out.stop))
     }
 
     /// Energy-minimize the geometry in place under a [`Minimizer`](crate::Minimizer)

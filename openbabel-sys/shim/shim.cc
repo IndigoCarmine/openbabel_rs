@@ -37,6 +37,7 @@
 #include "forcefieldmmff94.h"
 #include "forcefieldmm2.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <sstream>
@@ -1773,8 +1774,10 @@ double optimizer_run_to_end(Molecule &mol, rust::Str ff_id, uint32_t algorithm,
     }
     int n = static_cast<int>(steps);
     ff_initialize(ff, algorithm, n, econv);
-    while (ff_take_steps(ff, algorithm, n)) {
-    }
+    // One call consumes the whole budget: OpenBabel stops at its own internal
+    // step counter, which `ff_initialize` just set to `n`. (The former `while`
+    // loop around this could only ever run one iteration.)
+    ff_take_steps(ff, algorithm, n);
     ff->GetCoordinates(mol.mol);
     double e = ff->Energy(false);
     ff_finish(ff);
@@ -1790,8 +1793,11 @@ double optimizer_run_to_end(Molecule &mol, rust::Str ff_id, uint32_t algorithm,
 rust::Vec<double> optimizer_run_trajectory(Molecule &mol, rust::Str ff_id, uint32_t algorithm,
                                            uint32_t steps, double econv,
                                            const Constraints &constraints,
-                                           uint32_t frame_interval) {
+                                           uint32_t frame_interval,
+                                           uint32_t &stop_reason, uint32_t &steps_taken) {
   rust::Vec<double> out;
+  stop_reason = OPT_STOP_FAILED;
+  steps_taken = 0;
   OpenBabel::OBForceField *ff = nullptr;
   try {
     ff = setup_forcefield(mol.mol, to_std(ff_id), const_cast<Constraints &>(constraints).c);
@@ -1799,9 +1805,20 @@ rust::Vec<double> optimizer_run_trajectory(Molecule &mol, rust::Str ff_id, uint3
     int budget = static_cast<int>(steps);
     int chunk = frame_interval == 0 ? 1 : static_cast<int>(frame_interval);
     ff_initialize(ff, algorithm, budget, econv);
+    int taken = 0;
     bool more = true;
-    while (more) {
-      more = ff_take_steps(ff, algorithm, chunk);
+    while (more && taken < budget) {
+      // Clamp to the remaining budget: OpenBabel stops at its own internal step
+      // counter, so asking for more than is left would make `taken` overshoot and
+      // misreport a converged run as budget exhaustion.
+      int take = std::min(chunk, budget - taken);
+      more = ff_take_steps(ff, algorithm, take);
+      // OpenBabel does not report how many of `take` it actually ran, so a chunk
+      // it cut short by converging is counted whole. That rounds `steps_taken` up
+      // by less than one chunk, and can only ever push the classification below
+      // toward MAX_STEPS — the safe direction, since the caller answers that by
+      // running one more segment.
+      taken += take;
       ff->GetCoordinates(mol.mol);
       out.push_back(ff->Energy(false));  // frame = [energy, x0,y0,z0, ...]
       unsigned int natoms = mol.mol.NumAtoms();
@@ -1813,8 +1830,16 @@ rust::Vec<double> optimizer_run_trajectory(Molecule &mol, rust::Str ff_id, uint3
         out.push_back(a->GetZ());
       }
     }
+    // `more == false` before the budget ran out can only mean OpenBabel's own
+    // convergence criterion fired. Exactly at the budget the two are
+    // indistinguishable — OpenBabel returns false either way — so report
+    // MAX_STEPS and let the caller run another segment: it converges immediately
+    // and says so. The opposite guess is the bug this whole change exists to fix.
+    stop_reason = taken >= budget ? OPT_STOP_MAX_STEPS : OPT_STOP_CONVERGED;
+    steps_taken = static_cast<uint32_t>(taken);
     ff_finish(ff);
   } catch (...) {
+    stop_reason = OPT_STOP_FAILED;
     ff_finish(ff);
   }
   return out;

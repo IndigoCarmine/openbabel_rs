@@ -360,10 +360,21 @@ double optimizer_run_to_end(Molecule &mol, rust::Str ff_id, uint32_t algorithm,
 // is flattened as repeated frames, each `1 + 3 * num_atoms` doubles laid out as
 // [energy, x0, y0, z0, x1, y1, z1, ...]. `mol` ends at the final geometry. Empty
 // on unknown force field or setup failure.
+//
+// OpenBabel's *TakeNSteps return `false` both when the minimization converged and
+// when it exhausted its step budget, so a caller driving it cannot tell "done" from
+// "ran out of room". `stop_reason` recovers that distinction (see OPT_STOP_* below)
+// and `steps_taken` reports how many steps actually ran (the last chunk may be
+// short). These values must stay in sync with `StopReason` in openbabel/src/minimize.rs.
+constexpr uint32_t OPT_STOP_CONVERGED = 0;
+constexpr uint32_t OPT_STOP_MAX_STEPS = 1;
+constexpr uint32_t OPT_STOP_FAILED = 2;
+
 rust::Vec<double> optimizer_run_trajectory(Molecule &mol, rust::Str ff_id,
                                            uint32_t algorithm, uint32_t steps,
                                            double econv, const Constraints &constraints,
-                                           uint32_t frame_interval);
+                                           uint32_t frame_interval,
+                                           uint32_t &stop_reason, uint32_t &steps_taken);
 
 // --- Molecule construction & editing --------------------------------------
 // Add a new atom of `atomic_num`; returns its 0-based index.

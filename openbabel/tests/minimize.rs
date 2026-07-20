@@ -1,7 +1,7 @@
 //! Integration tests for configurable, constrained, and streamed force-field
 //! minimization (T10).
 
-use openbabel::{Algorithm, Axis, Constraints, Minimizer, Molecule};
+use openbabel::{Algorithm, Axis, Constraints, Minimizer, Molecule, StopReason};
 
 fn ethanol_3d() -> Molecule {
     let mut mol = Molecule::parse("CCO", "smi").expect("parse ethanol");
@@ -148,4 +148,53 @@ fn axis_fix_and_ignore_run() {
     let mut cfg = Minimizer::new("MMFF94");
     cfg.algorithm(Algorithm::Lbfgs).max_steps(100).constraints(c);
     assert!(mol.optimize_geometry_with(&cfg).is_some());
+}
+
+#[test]
+fn stop_reason_distinguishes_budget_from_convergence() {
+    // A budget of one step cannot minimize anything: the run must report that it
+    // was cut short rather than passing an unfinished geometry off as minimized.
+    let mut mol = ethanol_3d();
+    let mut tight = Minimizer::new("MMFF94");
+    tight.max_steps(1).steps_per_frame(1).energy_convergence(1e-30);
+    let run = mol.minimize(&tight);
+    assert_eq!(run.stop_reason(), StopReason::MaxSteps);
+    assert_eq!(run.steps_taken(), 1);
+
+    // Given room and a reachable threshold, the same molecule converges — and
+    // says so, having stopped before burning the whole budget.
+    let mut loose = Minimizer::new("MMFF94");
+    loose.max_steps(10_000).steps_per_frame(10).energy_convergence(1e-4);
+    let run = mol.minimize(&loose);
+    assert_eq!(run.stop_reason(), StopReason::Converged);
+    assert!(run.steps_taken() < 10_000, "burned the budget: {}", run.steps_taken());
+}
+
+#[test]
+fn steps_taken_never_exceeds_the_budget() {
+    // steps_per_frame does not divide max_steps, so the final chunk is clamped
+    // to what is left (2 + 2 + 1). The reported step counts must respect that
+    // rather than overshoot, the way the old synthesized `step` counter did —
+    // it just added steps_per_frame per frame and sailed past the budget.
+    //
+    // Both knobs matter: at the default threshold ethanol converges within a
+    // handful of steps, so the budget would never be reached. A tight econv
+    // pushes convergence out to ~16 steps, and a budget of 5 lands well short.
+    let mut mol = ethanol_3d();
+    let mut cfg = Minimizer::new("MMFF94");
+    cfg.max_steps(5).steps_per_frame(2).energy_convergence(1e-30);
+    let run = mol.minimize(&cfg);
+    assert_eq!(run.stop_reason(), StopReason::MaxSteps);
+    assert_eq!(run.steps_taken(), 5);
+    let frames: Vec<_> = run.collect();
+    let steps: Vec<u32> = frames.iter().map(|f| f.step).collect();
+    assert_eq!(steps, vec![2, 4, 5], "final chunk was not clamped to the budget");
+}
+
+#[test]
+fn unsupported_pairing_reports_failed() {
+    let mut mol = ethanol_3d();
+    let mut cfg = Minimizer::new("UFF");
+    cfg.algorithm(Algorithm::Lbfgs);
+    assert_eq!(mol.minimize(&cfg).stop_reason(), StopReason::Failed);
 }

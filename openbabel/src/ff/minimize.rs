@@ -6,12 +6,18 @@
 //! with a backtracking (Armijo) line search; the L-BFGS selector currently maps
 //! to conjugate gradients.
 //!
-//! The stopping criterion matches OpenBabel's public knob: stop once the
-//! step-to-step energy change drops below `econv`. A trajectory frame is
-//! recorded every `steps_per_frame` steps (plus the final one).
+//! Stopping is deliberately stricter than OpenBabel's public knob. A run counts
+//! as converged only once the step-to-step energy change stays below `econv` for
+//! [`ECONV_STREAK`] consecutive steps, or the gradient falls under [`GRAD_TOL`];
+//! a single small step is not enough, because a line search crossing a flat
+//! stretch produces one routinely and stopping there leaves the geometry
+//! unminimized. Anything else — budget exhausted, or a line search that stalls —
+//! reports [`StopReason::MaxSteps`], so callers never mistake an unfinished run
+//! for a finished one. A trajectory frame is recorded every `steps_per_frame`
+//! steps (plus the final one).
 
 use super::EnergyModel;
-use crate::Algorithm;
+use crate::{Algorithm, StopReason};
 
 /// One recorded step of a minimization trajectory.
 pub(crate) struct Frame {
@@ -25,7 +31,20 @@ pub(crate) struct MinOutcome {
     pub energy: f64,
     pub coords: Vec<f64>,
     pub frames: Vec<Frame>,
+    /// Why the loop ended. `MaxSteps` also covers a stalled line search: in both
+    /// cases the geometry is not known to be minimized.
+    pub stop: StopReason,
 }
+
+/// How many consecutive steps must show an energy change below `econv` before
+/// the run counts as converged. A single small step proves nothing — a line
+/// search crossing a flat stretch produces one routinely — so requiring two in
+/// a row keeps the minimizer from declaring victory mid-descent.
+const ECONV_STREAK: u32 = 2;
+
+/// Gradient-norm floor for convergence. Reaching a stationary point is the real
+/// goal; the energy criterion alone cannot distinguish "arrived" from "crawling".
+const GRAD_TOL: f64 = 1.0e-6;
 
 fn dot(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b).map(|(x, y)| x * y).sum()
@@ -98,15 +117,32 @@ pub(crate) fn minimize<M: EnergyModel + ?Sized>(
     let spf = steps_per_frame.max(1);
     let use_cg = matches!(algorithm, Algorithm::ConjugateGradients | Algorithm::Lbfgs);
     let mut frames = Vec::new();
+    let mut streak = 0u32;
+    let mut stop = StopReason::MaxSteps;
 
     for step in 1..=max_steps {
+        // Fall back to steepest descent if the carried direction is not a descent
+        // direction; remember whether that leaves us already on -g.
+        let mut steepest = false;
         if dot(&dir, &g) >= 0.0 {
-            dir = neg(&g); // fall back to steepest descent if not a descent dir
+            dir = neg(&g);
+            steepest = true;
         }
-        let (new_x, new_e) = match line_search(model, &x, &dir, energy, &g) {
+        let mut stepped = line_search(model, &x, &dir, energy, &g);
+        if stepped.is_none() && !steepest {
+            // A CG direction can stall while plain descent still has room, so a
+            // failure there is not evidence of a minimum. Reset to steepest
+            // descent and try once more before believing it.
+            dir = neg(&g);
+            stepped = line_search(model, &x, &dir, energy, &g);
+        }
+        let (new_x, new_e) = match stepped {
             Some(v) => v,
             None => {
-                // No further decrease: record where we are and stop.
+                // Even steepest descent found no decrease. That usually means a
+                // minimum, but the line search could equally have stalled on
+                // numerical noise — report MaxSteps rather than claim a
+                // convergence we did not actually verify.
                 frames.push(Frame { step, energy, coords: x.clone() });
                 break;
             }
@@ -123,7 +159,15 @@ pub(crate) fn minimize<M: EnergyModel + ?Sized>(
             dir = neg(&new_g);
         }
 
-        let converged = (energy - new_e).abs() < econv;
+        // Two independent ways to be done: a stationary point (gradient ~ 0), or
+        // an energy that has stopped moving for `ECONV_STREAK` steps running.
+        if (energy - new_e).abs() < econv {
+            streak += 1;
+        } else {
+            streak = 0;
+        }
+        let converged = streak >= ECONV_STREAK || inf_norm(&new_g) < GRAD_TOL;
+
         x = new_x;
         g = new_g;
         energy = new_e;
@@ -132,11 +176,12 @@ pub(crate) fn minimize<M: EnergyModel + ?Sized>(
             frames.push(Frame { step, energy, coords: x.clone() });
         }
         if converged {
+            stop = StopReason::Converged;
             break;
         }
     }
 
-    MinOutcome { energy, coords: x, frames }
+    MinOutcome { energy, coords: x, frames, stop }
 }
 
 #[cfg(test)]
@@ -177,5 +222,46 @@ mod tests {
         let start = [0.0, 0.0, 0.0, 0.7, 0.0, 0.0]; // compressed
         let out = minimize(&m, &start, Algorithm::SteepestDescent, 1000, 1e-9, 10);
         assert!(out.energy < 1e-3, "final energy {}", out.energy);
+        assert_eq!(out.stop, StopReason::Converged);
+    }
+
+    /// A run cut short by its budget must say so. Reporting `Converged` here is
+    /// the bug that let half-minimized geometries pass as finished.
+    #[test]
+    fn exhausting_the_budget_reports_max_steps() {
+        let terms = Terms {
+            n_atoms: 2,
+            bonds: vec![BondTerm { a: 0, b: 1, kb: 100.0, r0: 1.5 }],
+            ..Default::default()
+        };
+        let m = UffModel::new(terms);
+        let start = [0.0, 0.0, 0.0, 5.0, 0.0, 0.0]; // far from equilibrium
+        // Two steps cannot relax this, and econv is far too tight to fire.
+        let out = minimize(&m, &start, Algorithm::SteepestDescent, 2, 1e-30, 1);
+        assert_eq!(out.stop, StopReason::MaxSteps, "energy {}", out.energy);
+    }
+
+    /// One sub-`econv` step is not convergence. `econv` here is wide enough that
+    /// the very first step trips it while the bond is still far from
+    /// equilibrium — the case that used to report `Converged` after a single
+    /// step. The streak rule means one step can no longer end a run, so with a
+    /// budget of exactly one the honest answer is `MaxSteps`.
+    #[test]
+    fn a_single_flat_step_is_not_convergence() {
+        let terms = Terms {
+            n_atoms: 2,
+            bonds: vec![BondTerm { a: 0, b: 1, kb: 100.0, r0: 1.5 }],
+            ..Default::default()
+        };
+        let m = UffModel::new(terms);
+        let start = [0.0, 0.0, 0.0, 5.0, 0.0, 0.0]; // nowhere near r0
+        let out = minimize(&m, &start, Algorithm::SteepestDescent, 1, 1.0e9, 1);
+        assert_eq!(
+            out.stop,
+            StopReason::MaxSteps,
+            "one step below econv was taken for convergence"
+        );
+        let r = out.coords[3] - out.coords[0];
+        assert!((r - 1.5).abs() > 1.0, "test is not exercising a far-from-min state (r={r})");
     }
 }

@@ -354,6 +354,10 @@ pub mod ffi {
         /// Run to completion recording a frame every `frame_interval` steps;
         /// flattened as repeated `[energy, x0,y0,z0, …]` (`1 + 3·num_atoms` each).
         /// `mol` ends at the final geometry. Empty on unknown FF / setup failure.
+        ///
+        /// `stop_reason` distinguishes the two endings OpenBabel itself conflates:
+        /// 0 = converged, 1 = hit the step budget, 2 = setup failure. `steps_taken`
+        /// is how many steps actually ran.
         fn optimizer_run_trajectory(
             mol: Pin<&mut Molecule>,
             ff_id: &str,
@@ -362,6 +366,8 @@ pub mod ffi {
             econv: f64,
             constraints: &Constraints,
             frame_interval: u32,
+            stop_reason: &mut u32,
+            steps_taken: &mut u32,
         ) -> Vec<f64>;
 
         // Molecule construction & editing.

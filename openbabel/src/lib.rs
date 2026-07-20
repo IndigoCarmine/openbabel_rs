@@ -39,7 +39,7 @@ pub use bond::{Bond, BondMut};
 pub use constraints::{Axis, Constraints};
 pub use error::Error;
 pub use fingerprint::Fingerprint;
-pub use minimize::{Algorithm, Minimizer, OptStep, Optimization};
+pub use minimize::{Algorithm, Minimizer, OptStep, Optimization, StopReason};
 pub use mol::{Molecule, SvgOptions};
 pub use reaction::Reaction;
 pub use residue::Residue;
