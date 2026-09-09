@@ -8,12 +8,20 @@ resolver = "2"
 members = ["openbabel-sys", "openbabel", "cli"]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 license = "GPL-2.0-only"
 repository = "https://github.com/IndigoCarmine/openbabel_rs"
 
 [workspace.dependencies]
+# Declared here, and not spelled out again in openbabel/Cargo.toml, because the
+# two have to be bumped together with workspace.package.version above. Inside
+# the workspace the path wins and a stale version requirement builds fine; it
+# fails only for someone consuming these crates over git, where the version
+# requirement is what cargo resolves against -- so the mistake is invisible
+# exactly where it is made.
+openbabel-sys = { path = "openbabel-sys", version = "0.4.0" }
+openbabel = { path = "openbabel", version = "0.4.0" }
 cxx = "1.0"
 cxx-build = "1.0"
 cmake = "0.1"
