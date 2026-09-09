@@ -226,4 +226,71 @@ mod tests {
             "force-field data did not load — BABEL_DATADIR is wrong"
         );
     }
+
+    /// The fragment indexes are tables of *byte offsets* into their fragment
+    /// files, and nothing validates them at runtime: `OBBuilder` seeks to an
+    /// offset, parses whatever is there, and on nonsense reports a fragment of
+    /// zeroes and keeps going. `generate_3d()` still returns true, and the
+    /// caller gets a molecule with atoms piled on the origin or NaN coordinates.
+    ///
+    /// That is what happens when the data files reach the build with CRLF
+    /// endings while the index was generated against LF — every offset is then
+    /// short by the number of preceding lines. `normalize_data_line_endings` in
+    /// `openbabel-sys/build.rs` undoes it; this is the check that it did.
+    ///
+    /// Each offset must land exactly on the start of a coordinate line: an
+    /// atomic number followed by three floats.
+    #[test]
+    fn fragment_index_offsets_land_on_coordinates() {
+        let dir = std::path::Path::new(openbabel_sys::paths::BABEL_DATADIR);
+        let mut checked = 0usize;
+
+        for (index_name, fragments_name) in [
+            ("rigid-fragments-index.txt", "rigid-fragments.txt"),
+            ("ring-fragments-index.txt", "ring-fragments.txt"),
+        ] {
+            let (Ok(index), Ok(fragments)) = (
+                std::fs::read_to_string(dir.join(index_name)),
+                std::fs::read(dir.join(fragments_name)),
+            ) else {
+                // Not every OpenBabel build ships both indexes.
+                continue;
+            };
+
+            for line in index.lines() {
+                let Some((smiles, offset)) = line.rsplit_once(char::is_whitespace) else {
+                    continue;
+                };
+                let Ok(offset) = offset.trim().parse::<usize>() else {
+                    continue;
+                };
+                assert!(
+                    offset < fragments.len(),
+                    "{index_name}: offset {offset} for {smiles} is past the end of {fragments_name} ({} bytes)",
+                    fragments.len()
+                );
+
+                let rest = &fragments[offset..];
+                let end = rest.iter().position(|&b| b == 10).unwrap_or(rest.len());
+                let first_line = String::from_utf8_lossy(&rest[..end]);
+                let fields: Vec<&str> = first_line.split_whitespace().collect();
+
+                let looks_like_coordinates = fields.len() == 4
+                    && fields[0].parse::<u32>().is_ok()
+                    && fields[1..].iter().all(|f| f.parse::<f64>().is_ok());
+
+                assert!(
+                    looks_like_coordinates,
+                    "{index_name}: offset {offset} for {smiles} does not land on a coordinate                      line in {fragments_name} — it reads {first_line:?}. The index and the                      fragment file disagree; the usual cause is CRLF line endings in the data."
+                );
+                checked += 1;
+            }
+        }
+
+        assert!(
+            checked > 0,
+            "no fragment index entries were checked — BABEL_DATADIR ({}) has no fragment              data, so 3D generation has no templates to build from",
+            dir.display()
+        );
+    }
 }

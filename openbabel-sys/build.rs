@@ -164,6 +164,11 @@ fn main() {
         (lib_dir, "openbabel".to_string(), libdir, datadir)
     };
 
+    // The vendored data files are checked out through git, and on Windows
+    // `core.autocrlf=true` — the default there — rewrites every one of them to
+    // CRLF. Undo that before anything reads them.
+    normalize_data_line_endings(&babel_datadir);
+
     // 2. Compile the cxx bridge + C++ shim against the installed headers.
     //
     // The shim pulls in OpenBabel headers, so it needs the same MSVC settings
@@ -529,6 +534,65 @@ fn patch_ff_header(header: &Path, marker: &str, accessors: &str) {
     fs::write(header, patched).expect("patch force-field header with Rust accessors");
 }
 
+/// Rewrite CRLF back to LF across the installed data directory.
+///
+/// `rigid-fragments-index.txt` and `ring-fragments-index.txt` are *byte-offset*
+/// indexes into their fragment files, generated upstream against files with LF
+/// endings. Checked out with CRLF every offset is short by the number of
+/// preceding lines — measured at 46 190 bytes for a fragment on line 46 210 —
+/// so `OBBuilder::GetFragmentCoord` seeks into the middle of an unrelated
+/// fragment and parses whatever is there. It reports that as
+///
+/// ```text
+/// Rigid fragment O=C1CC(=O)NC(=O)N1 in rigid-fragments.txt has all zero coordinates.
+/// ```
+///
+/// and then builds the molecule anyway, piling the atoms it could not place on
+/// the origin or writing NaN coordinates — while `generate_3d()` still returns
+/// true. Measured on 3-phenyl-o-benzoquinone: 14 of 40 builds usable with the
+/// CRLF data, 40 of 40 after this normalization.
+///
+/// Every data file OpenBabel ships is text bar one PNG, and the parsers are
+/// written for LF, so the whole directory is normalized rather than just the
+/// two fragment files — any other offset- or column-sensitive table would fail
+/// the same way. Files holding a NUL byte are left alone: that is the PNG, and
+/// anything else binary that might be added later.
+fn normalize_data_line_endings(dir: &Path) {
+    // Spelled as byte values rather than escapes: this function is about CR
+    // and LF, and a source escape for them is the one thing an editor or a
+    // checkout can quietly rewrite.
+    const CR: u8 = 13;
+    const LF: u8 = 10;
+
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Ok(bytes) = fs::read(&path) else {
+            continue;
+        };
+        // A NUL means binary — the shipped PNG, and whatever else may join it.
+        let has_crlf = bytes.windows(2).any(|w| w[0] == CR && w[1] == LF);
+        if bytes.contains(&0) || !has_crlf {
+            continue;
+        }
+        let mut out = Vec::with_capacity(bytes.len());
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == CR && bytes.get(i + 1) == Some(&LF) {
+                i += 1;
+                continue;
+            }
+            out.push(bytes[i]);
+            i += 1;
+        }
+        let _ = fs::write(&path, out);
+    }
+}
 /// Copy `src` to `dst`, skipping the write if `dst` is already up to date.
 fn copy_if_newer(src: &Path, dst: &Path) {
     if !src.exists() {
