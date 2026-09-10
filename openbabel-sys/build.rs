@@ -376,7 +376,7 @@ fn build_openbabel(ob_src: &Path, eigen_dir: &Path, key: Option<&str>) -> PathBu
 }
 
 /// Take OpenBabel from an install tree built elsewhere instead of compiling it,
-/// returning the tree's root.
+/// returning a copy of the tree inside `OUT_DIR`.
 ///
 /// The tree has to be exactly what this checkout would build: the shim is still
 /// compiled here, against the tree's headers, and links into its library, so a
@@ -385,6 +385,14 @@ fn build_openbabel(ob_src: &Path, eigen_dir: &Path, key: Option<&str>) -> PathBu
 /// anything short of an exact match is refused. Falling back to a source build
 /// instead would turn a mismatched download into a 20-minute build nobody asked
 /// for, with nothing in the log to say why.
+///
+/// The copy is not for tidiness. The rpath this script bakes in reaches only
+/// openbabel-sys's own binaries; a dependent's tests and binaries find
+/// `libopenbabel` through the loader path cargo sets for `cargo test` and
+/// `cargo run`, and cargo puts a link-search directory on it only when that
+/// directory lies under `target/<profile>/`. A tree used where it was unpacked
+/// links fine and then fails to load on Linux and macOS. The copy also leaves
+/// nothing pointing at the unpacked archive, which CI tends to delete.
 ///
 /// None of the source build's requirements apply: no CMake, no Perl, and the
 /// vendored OpenBabel tree is left unpatched.
@@ -419,7 +427,15 @@ fn use_prebuilt(dir: PathBuf, key: Option<&str>) -> PathBuf {
         )
     }
 
-    dir
+    // A copy that finished carries the key file (it goes last), so one cut
+    // short is redone rather than trusted.
+    let dst = PathBuf::from(env::var("OUT_DIR").unwrap()).join("prebuilt");
+    if fs::read_to_string(dst.join(KEY_FILE)).ok().as_deref() != Some(key) {
+        let _ = fs::remove_dir_all(&dst);
+        copy_install_tree(&dir, &dst);
+    }
+
+    dst
 }
 
 /// Describe what an OpenBabel install tree is built from, so a prebuilt can be
@@ -503,10 +519,18 @@ fn export_prebuilt(dst: &Path, dir: &Path) {
         );
         fs::remove_dir_all(dir).expect("clear the previous prebuilt export");
     }
+    copy_install_tree(dst, dir);
+}
+
+/// Copy what makes up a prebuilt from the install tree at `from` into `to`:
+/// CMake's install directories, then the key file -- last, so that only a
+/// finished copy carries it.
+fn copy_install_tree(from: &Path, to: &Path) {
+    fs::create_dir_all(to).expect("create a prebuilt directory");
     for name in ["bin", "include", "lib", "share", KEY_FILE] {
-        let from = dst.join(name);
-        if from.exists() {
-            copy_tree(&from, &dir.join(name));
+        let path = from.join(name);
+        if path.exists() {
+            copy_tree(&path, &to.join(name));
         }
     }
 }
