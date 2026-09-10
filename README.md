@@ -292,6 +292,10 @@ cargo run   -p openbabel-cli -- "c1ccccc1"   # benzene
 > The **first** build compiles all of OpenBabel from source and takes ~10–20
 > minutes. Subsequent builds are incremental and fast.
 
+In CI, the prebuilt OpenBabel attached to each tagged release can stand in for
+that build: set `OPENBABEL_SYS_PREBUILT_DIR` to the unpacked archive. See
+[Prebuilt OpenBabel for CI](docs/src/building.md#prebuilt-openbabel).
+
 ### Example
 
 ```rust

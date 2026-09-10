@@ -71,7 +71,10 @@ is no runtime dependency on a system OpenBabel install. Its pipeline:
    `OUT_DIR` using the [`cmake`](https://docs.rs/cmake) crate. Eigen (from
    `vendor/eigen`) is pointed at OpenBabel's `find_package(Eigen3)`, which
    enables `HAVE_EIGEN3` — this compiles `OBAlign` (structure superposition) and
-   unlocks distance-geometry 3D generation.
+   unlocks distance-geometry 3D generation. With `OPENBABEL_SYS_PREBUILT_DIR`
+   set, this step is skipped in favor of an install tree built from the same
+   sources elsewhere — see
+   [Prebuilt OpenBabel for CI](./building.md#prebuilt-openbabel).
 2. **Compile the cxx bridge + shim**, pointing the C++ compiler at the
    freshly installed OpenBabel headers.
 3. **Link** against the OpenBabel import library.

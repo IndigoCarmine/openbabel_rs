@@ -1,9 +1,14 @@
 name: Tests
 
+# A tag push tests every platform and, when all of them pass, attaches a
+# prebuilt OpenBabel for each to the tag's release (see docs/src/building.md).
+# A manual run does the same short of publishing -- the way to try a change to
+# the build without cutting a release.
 on:
   push:
     tags:
       - '*'
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -31,3 +36,64 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace
+        env:
+          # Also lay the freshly built OpenBabel out as a prebuilt.
+          OPENBABEL_SYS_EXPORT_DIR: ${{ github.workspace }}/target/prebuilt-export
+
+      # Paths stay relative: GNU tar reads `D:\...` as a remote host.
+      - name: Package prebuilt OpenBabel
+        id: package
+        shell: bash
+        run: |
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          archive="openbabel-sys-$triple.tar.gz"
+          mkdir -p dist target/prebuilt-unpacked
+          tar -czf "dist/$archive" -C target/prebuilt-export .
+          tar -xzf "dist/$archive" -C target/prebuilt-unpacked
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      # Check the archive on its own before anyone downloads it: throw away the
+      # source-built OpenBabel and test again against the unpacked copy, which
+      # sits at a different path than the one it was built at.
+      - name: Test against the prebuilt
+        shell: bash
+        run: |
+          cargo clean -p openbabel-sys
+          cargo test --workspace
+        env:
+          OPENBABEL_SYS_PREBUILT_DIR: ${{ github.workspace }}/target/prebuilt-unpacked
+
+      - name: Upload prebuilt
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.archive }}
+          path: dist/${{ steps.package.outputs.archive }}
+          if-no-files-found: error
+
+  release:
+    name: Attach prebuilts to the release
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download prebuilts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openbabel-sys-*
+          path: dist
+          merge-multiple: true
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "$TAG" --generate-notes --verify-tag
+          fi
