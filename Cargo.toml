@@ -8,7 +8,7 @@ resolver = "2"
 members = ["openbabel-sys", "openbabel", "cli"]
 
 [workspace.package]
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 license = "GPL-2.0-only"
 repository = "https://github.com/IndigoCarmine/openbabel_rs"
@@ -20,8 +20,8 @@ repository = "https://github.com/IndigoCarmine/openbabel_rs"
 # fails only for someone consuming these crates over git, where the version
 # requirement is what cargo resolves against -- so the mistake is invisible
 # exactly where it is made.
-openbabel-sys = { path = "openbabel-sys", version = "0.4.2" }
-openbabel = { path = "openbabel", version = "0.4.2" }
+openbabel-sys = { path = "openbabel-sys", version = "0.4.3" }
+openbabel = { path = "openbabel", version = "0.4.3" }
 cxx = "1.0"
 cxx-build = "1.0"
 cmake = "0.1"
