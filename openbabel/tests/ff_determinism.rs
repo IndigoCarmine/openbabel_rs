@@ -333,11 +333,19 @@ fn exactly_anti_and_perpendicular_torsions_are_not_charged_as_syn() {
                 .map(|k| energy(&turned(&base, axis, 0.2 * k as f64)))
                 .collect();
             // Off the exact torsion OpenBabel's own angle is used; their mean
-            // is the energy at it to O(DELTA^2).
+            // is the energy at it to O(DELTA^2). That error grows with the
+            // structure's strain (macOS arm64 builds a butane at ~1500
+            // kcal/mol, 3e-5 off), so it gets a loose bound: a torsion charged
+            // as syn is off by kJ/mol. Rotation invariance is checked tightly.
             let smooth = 0.5 * (energy(&at(DELTA)) + energy(&at(-DELTA)));
             for (k, e) in turns.iter().enumerate() {
                 assert!(
-                    (e - smooth).abs() < 1e-5,
+                    (e - turns[0]).abs() < 1e-8 * turns[0].abs().max(1.0),
+                    "{ff} at {deg} deg, turn {k}: {e} but {} at turn 0 ({turns:?})",
+                    turns[0]
+                );
+                assert!(
+                    (e - smooth).abs() < 1e-3,
                     "{ff} at {deg} deg, turn {k}: {e} but {smooth} either side ({turns:?})"
                 );
             }
