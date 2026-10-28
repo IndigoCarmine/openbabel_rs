@@ -34,6 +34,7 @@ the release was tested on:
 | `openbabel-sys-x86_64-unknown-linux-gnu.tar.gz` | `ubuntu-latest`  |
 | `openbabel-sys-x86_64-pc-windows-msvc.tar.gz`   | `windows-latest` |
 | `openbabel-sys-aarch64-apple-darwin.tar.gz`     | `macos-latest`   |
+| `openbabel-sys-x86_64-apple-darwin.tar.gz`      | `macos-15-intel` |
 
 Point `OPENBABEL_SYS_PREBUILT_DIR` at an unpacked archive and `build.rs` uses it
 instead of compiling OpenBabel — no CMake, no Perl, no 10–20 minutes. The cxx
@@ -77,9 +78,9 @@ command:
 The tag is read from `Cargo.lock`, so it cannot drift from the version cargo
 actually builds. A few things to know:
 
-- The archives are built on GitHub's `*-latest` runners and meant for them. An
-  older Linux distribution (older glibc) or macOS release may refuse to load
-  them.
+- The archives are built on GitHub's `*-latest` runners (Intel macOS on
+  `macos-15-intel`) and meant for them. An older Linux distribution (older
+  glibc) or macOS release may refuse to load them.
 - When cross-compiling, use the target triple rather than the host's.
 - cargo still clones the submodules of a git dependency; caching `~/.cargo/git`
   (for example with `Swatinem/rust-cache`) saves that download too.

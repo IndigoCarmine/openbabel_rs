@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
 
     steps:
       - name: Checkout
@@ -51,6 +51,36 @@ jobs:
           tar -czf "dist/$archive" -C target/prebuilt-export .
           tar -xzf "dist/$archive" -C target/prebuilt-unpacked
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      # Every Mach-O in a macOS archive must be built for the archive's own
+      # architecture and carry a loader-relative install name -- an app that
+      # lipo's the arm64 and x86_64 archives together relies on both.
+      - name: Check Mach-O architectures
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          case "$triple" in
+            aarch64-*) want=arm64 ;;
+            x86_64-*) want=x86_64 ;;
+            *) echo "::error::unexpected host $triple"; exit 1 ;;
+          esac
+          status=0 n=0
+          while IFS= read -r f; do
+            n=$((n + 1))
+            archs=$(lipo -archs "$f")
+            id=$(otool -D "$f" | sed -n 2p)
+            echo "$f: $archs${id:+ (id $id)}"
+            if [ "$archs" != "$want" ]; then
+              echo "::error::$f is $archs, not $want"; status=1
+            fi
+            case "$id" in
+              ''|@rpath/*|@loader_path/*) ;;
+              *) echo "::error::$f has absolute install name $id"; status=1 ;;
+            esac
+          done < <(find target/prebuilt-unpacked -type f \( -name '*.dylib' -o -name '*.so' \))
+          if [ "$n" -eq 0 ]; then echo "::error::no Mach-O libraries in the archive"; status=1; fi
+          exit $status
 
       # Check the archive on its own before anyone downloads it: throw away the
       # source-built OpenBabel and test again against the unpacked copy, which
