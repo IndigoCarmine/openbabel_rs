@@ -277,3 +277,70 @@ fn same_shape_different_connectivity_is_not_reused() {
         assert_close(&format!("{ff}: butane after isobutane"), a.energy(ff), wa);
     }
 }
+
+/// `coords` (flat x, y, z) turned rigidly by `angle` radians about the unit
+/// `axis` through the origin.
+fn turned(coords: &[f64], axis: [f64; 3], angle: f64) -> Vec<f64> {
+    let (s, c) = angle.sin_cos();
+    let [kx, ky, kz] = axis;
+    coords
+        .chunks(3)
+        .flat_map(|p| {
+            let (x, y, z) = (p[0], p[1], p[2]);
+            let kdp = kx * x + ky * y + kz * z;
+            let kxp = [ky * z - kz * y, kz * x - kx * z, kx * y - ky * x];
+            [
+                x * c + kxp[0] * s + kx * kdp * (1.0 - c),
+                y * c + kxp[1] * s + ky * kdp * (1.0 - c),
+                z * c + kxp[2] * s + kz * kdp * (1.0 - c),
+            ]
+        })
+        .collect()
+}
+
+#[test]
+fn exactly_anti_and_perpendicular_torsions_are_not_charged_as_syn() {
+    // UFF's gradient-free torsion term takes the angle from acos and falls back
+    // to 1e-3 rad (syn) when the cosine rounds past -1 -- at an exactly anti
+    // torsion, depending on the coordinates' last bits -- or when the dot
+    // product is tiny, at an exactly perpendicular one. The energy then jumped
+    // by 2V (8.87 kJ/mol for butane's C-C-C-C) between geometries that differ
+    // only by a rigid rotation, e.g. a scan's -180 and +180 points. Every force
+    // field must give a smooth, rotation-invariant energy there.
+    let butane = build("butane", "CCCC").mol;
+    let axis = {
+        let a: [f64; 3] = [0.3, -0.7, 0.648];
+        let n = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt();
+        [a[0] / n, a[1] / n, a[2] / n]
+    };
+    const DELTA: f64 = 1e-4;
+    for ff in FORCEFIELDS {
+        for deg in [180.0_f64, -180.0, 90.0, -90.0] {
+            let at = |offset: f64| {
+                let mut m = butane.clone();
+                m.set_torsion(0, 1, 2, 3, deg.to_radians() + offset);
+                coords(&m)
+            };
+            let energy = |c: &[f64]| {
+                let mut m = butane.clone();
+                assert!(m.set_coordinates(c));
+                m.energy(ff).unwrap()
+            };
+            let base = at(0.0);
+            // The same geometry seen from 32 orientations: OpenBabel's cosine
+            // rounds to either side of -1 for some of them.
+            let turns: Vec<f64> = (0..32)
+                .map(|k| energy(&turned(&base, axis, 0.2 * k as f64)))
+                .collect();
+            // Off the exact torsion OpenBabel's own angle is used; their mean
+            // is the energy at it to O(DELTA^2).
+            let smooth = 0.5 * (energy(&at(DELTA)) + energy(&at(-DELTA)));
+            for (k, e) in turns.iter().enumerate() {
+                assert!(
+                    (e - smooth).abs() < 1e-5,
+                    "{ff} at {deg} deg, turn {k}: {e} but {smooth} either side ({turns:?})"
+                );
+            }
+        }
+    }
+}

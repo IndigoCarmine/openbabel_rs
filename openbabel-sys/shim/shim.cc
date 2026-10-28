@@ -548,6 +548,64 @@ OpenBabel::OBForceField *prepare_forcefield(OpenBabel::OBMol &mol, const std::st
   OpenBabel::OBFFConstraints none;
   return prepare_forcefield(mol, id, none);
 }
+
+// What UFF's gradient-free torsion term gets wrong, given `uff` has just run
+// Energy(false): the value to add to that energy.
+//
+// OBFFTorsionCalculationUFF::Compute<false> (forcefielduff.cpp:261-273) takes
+// the dihedral as acos(dot(abbc, bccd) / (|abbc| |bccd|)) and substitutes
+// 1e-3 rad -- an eclipsed (syn) torsion -- whenever that is not finite or the
+// dot product is below 2e-6 in magnitude:
+//  * at an exactly antiperiplanar torsion (180 deg) rounding puts the cosine a
+//    hair below -1 about half the time, acos gives NaN, and the term is
+//    charged as if syn: 2V too high for an sp3-sp3 bond (8.87 kJ/mol for
+//    butane's C-C-C-C). Which of two equal geometries is hit depends on the
+//    last bits of the coordinates, e.g. a scan's -180 and +180 points;
+//  * at an exactly perpendicular torsion (90 deg) the dot product is ~1e-16,
+//    so the term is always charged as syn (V too high for sp3-sp3).
+// The gradient path takes the dihedral from VectorTorsionDerivative, which
+// clamps its cosines, and is not affected; nor are the other force fields
+// (VectorTorsion, atan2). So each term that came out at the 1e-3 stand-in is
+// recomputed here with the angle from atan2(|abbc x bccd|, abbc . bccd),
+// which is well-conditioned at 0, 90 and 180 deg. A term whose angle really
+// is undefined (three collinear atoms: a zero cross product) keeps
+// OpenBabel's stand-in.
+double uff_torsion_correction(OpenBabel::OBForceFieldUFF *uff) {
+  double correction = 0.0;
+  for (const auto &t : uff->RsTorsionCalcs()) {
+    if (t.tor != 1.0e-3) continue;  // OpenBabel's own angle was used
+    if (OpenBabel::OBForceField::IgnoreCalculation(t.idx_a, t.idx_b, t.idx_c, t.idx_d))
+      continue;  // charged 0, as OpenBabel does
+    const OpenBabel::vector3 vab = t.a->GetVector() - t.b->GetVector();
+    const OpenBabel::vector3 vbc = t.b->GetVector() - t.c->GetVector();
+    const OpenBabel::vector3 vcd = t.c->GetVector() - t.d->GetVector();
+    const OpenBabel::vector3 abbc = OpenBabel::cross(vab, vbc);
+    const OpenBabel::vector3 bccd = OpenBabel::cross(vbc, vcd);
+    if (abbc.length() == 0.0 || bccd.length() == 0.0) continue;
+    const double tor =
+        std::atan2(OpenBabel::cross(abbc, bccd).length(), OpenBabel::dot(abbc, bccd));
+    if (!std::isfinite(tor)) continue;
+    // The term as Compute<false> writes it; it is even in the angle, so the
+    // sign Compute would attach does not matter.
+    const double energy = t.V * (1.0 - t.cosNPhi0 * std::cos(tor * t.n));
+    correction += energy - t.energy;
+  }
+  return correction;
+}
+
+// `ff->Energy(false)` for force field `id`, with UFF's torsion stand-ins
+// replaced (see `uff_torsion_correction`). Every energy the shim hands back
+// goes through here. (OpenBabel's own line searches still call Energy(false)
+// directly; only the energies reported are corrected.)
+double single_point_energy(OpenBabel::OBForceField *ff, const std::string &id) {
+  double e = ff->Energy(false);
+  std::string upper = id;
+  for (char &ch : upper) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
+  // static_cast, not dynamic_cast: see ff_export_terms. The instance for
+  // "UFF" is an OBForceFieldUFF.
+  if (upper == "UFF") e += uff_torsion_correction(static_cast<OpenBabel::OBForceFieldUFF *>(ff));
+  return e;
+}
 }  // namespace
 
 double mol_energy(const Molecule &mol, rust::Str ff_id, bool &ok) {
@@ -559,7 +617,7 @@ double mol_energy(const Molecule &mol, rust::Str ff_id, bool &ok) {
       return std::nan("");
     }
     ok = true;
-    return ff->Energy(false);
+    return single_point_energy(ff, to_std(ff_id));
   } catch (...) {
     ok = false;
     return std::nan("");
@@ -585,7 +643,7 @@ double mol_optimize(Molecule &mol, rust::Str ff_id, uint32_t steps, bool &ok) {
     ff->ConjugateGradients(static_cast<int>(steps));
     ff->GetCoordinates(mol.mol);
     ok = true;
-    return ff->Energy(false);
+    return single_point_energy(ff, to_std(ff_id));
   } catch (...) {
     ok = false;
     return std::nan("");
@@ -849,7 +907,7 @@ rust::Vec<double> mol_conformer_energies(const Molecule &mol, rust::Str ff_id) {
       // Push the now-active conformer's coordinates into the field; every
       // conformer has the same topology, so the setup itself stays valid.
       ff->SetCoordinates(m);
-      out.push_back(ff->Energy(false));
+      out.push_back(single_point_energy(ff, to_std(ff_id)));
     }
     m.SetConformer(saved_idx);
     return out;
@@ -1939,7 +1997,7 @@ double optimizer_run_to_end(Molecule &mol, rust::Str ff_id, uint32_t algorithm,
     // loop around this could only ever run one iteration.)
     ff_take_steps(ff, algorithm, n);
     ff->GetCoordinates(mol.mol);
-    double e = ff->Energy(false);
+    double e = single_point_energy(ff, to_std(ff_id));
     ff_finish(ff);
     ok = true;
     return e;
@@ -1980,7 +2038,7 @@ rust::Vec<double> optimizer_run_trajectory(Molecule &mol, rust::Str ff_id, uint3
       // running one more segment.
       taken += take;
       ff->GetCoordinates(mol.mol);
-      out.push_back(ff->Energy(false));  // frame = [energy, x0,y0,z0, ...]
+      out.push_back(single_point_energy(ff, to_std(ff_id)));  // frame = [energy, x0,y0,z0, ...]
       unsigned int natoms = mol.mol.NumAtoms();
       for (unsigned int i = 1; i <= natoms; ++i) {
         OpenBabel::OBAtom *a = mol.mol.GetAtom(static_cast<int>(i));
