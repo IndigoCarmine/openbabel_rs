@@ -354,23 +354,207 @@ double descriptor(const Molecule &mol, rust::Str id, bool &ok) {
 }
 
 // --- Force fields --------------------------------------------------------
+//
+// Every energy / optimisation entry point gets its force field from
+// `prepare_forcefield`, never by calling Setup() on OpenBabel's shared plugin
+// object directly. Calling the plugin directly made results depend on history:
+//
+//  * The plugin object (OBPlugin::GetPlugin / OBForceField::FindForceField) is
+//    one process-wide instance per force field, and OpenBabel's own code
+//    reconfigures it. The gen3d op (`generate_3d`, src/ops/gen3d.cpp:152-155)
+//    and the conformer op (src/ops/conformer.cpp:166-169) call
+//    EnableCutOff(true) / SetVDWCutOff / SetElectrostaticCutOff /
+//    SetUpdateFrequency on it and never switch them back. From then on Energy()
+//    skips every non-bonded pair whose bit is not set in `_vdwpairs` /
+//    `_elepairs` (e.g. forcefieldmmff94.cpp:709, :795) -- bit vectors that only
+//    the minimisers refresh (UpdatePairsSimple, forcefield.cpp:2801/2931/3191)
+//    and that were last filled for whatever molecule and geometry gen3d or the
+//    previous optimisation left behind. A single-point energy therefore summed
+//    a stale, foreign subset of the van der Waals / electrostatic terms.
+//  * OBForceField::Setup (forcefield.cpp:856-909) only redoes typing, charges
+//    and the term lists when IsSetupNeeded() (forcefield.cpp:983-1011) says so,
+//    and that check compares just atom/bond counts, per-index element and
+//    degree, and per-bond-index order and end elements. Butane and isobutane
+//    (or two molecules differing only in formal charges or in which atoms a
+//    bond joins) pass it, so the next molecule silently reused the previous
+//    one's atom types, charges and calculation lists.
+//  * Constraints live in a static member shared by all force fields
+//    (`OBForceField::_constraints`, forcefield.cpp:386), and the one-argument
+//    Setup() keeps whatever is installed there.
+//
+// So the shim owns one private instance per force field id (`new_instance`),
+// which OpenBabel's ops never see and whose cut-offs stay disabled; constraints
+// are installed explicitly on every call (empty for the unconstrained entry
+// points); and a full setup is forced unless the molecule's complete topology
+// (`topology_key`) equals that of the instance's last full setup -- the only
+// case in which OpenBabel's fast path (coordinates copied into the cached
+// setup) gives the same result as a fresh setup. That keeps scans
+// (`set_coordinates` + `energy` on one molecule) at microseconds per point
+// instead of milliseconds.
+//
+// The instances are created lazily and never destroyed, under the crate's
+// global lock like every other call. Their parameter files are parsed once,
+// on each instance's first setup.
+//
+// A private instance needs care at birth. MakeNewInstance() heap-allocates
+// with the force fields' constructors, which leave most OBForceField members
+// uninitialised (`_logos`, `_loglvl`, `_grad1`, ... -- only the MMFF94
+// constructor sets a few of them). The registered plugin objects get away with
+// that because they are globals, and so zero-initialised; a heap copy starts
+// with garbage, logs through a garbage stream pointer and delete[]s a garbage
+// `_grad1` (only the one-argument Setup's first-use branch resets it,
+// forcefield.cpp:858-864; the two-argument one does not, :913-918) --
+// corrupting the heap, which is why this shim used to avoid private instances.
+// `new_instance` gives each one a valid log stream and level and runs that
+// first-use branch before anything else.
 
 namespace {
 // Look up a force field plugin by id via the DLL-exported plugin registry.
+// Only for stateless queries (unit) and as the prototype for
+// `prepare_forcefield`'s private instances -- never set it up.
 OpenBabel::OBForceField *find_forcefield(const std::string &id) {
   return dynamic_cast<OpenBabel::OBForceField *>(
       OpenBabel::OBPlugin::GetPlugin("forcefields", id.c_str()));
+}
+
+// Everything OpenBabel's typing / charge / term setup reads from a molecule
+// apart from coordinates: per atom (in index order) element, formal charge,
+// isotope, spin multiplicity and implicit hydrogens; per bond its two end
+// atoms and order; and any aromaticity / hybridisation already perceived on
+// the molecule (which the force field's copy inherits). The perceived flags
+// are read only when the molecule says they are perceived, so building the
+// key never triggers perception on the caller's molecule.
+std::vector<long> topology_key(OpenBabel::OBMol &mol) {
+  std::vector<long> k;
+  const bool arom = mol.HasAromaticPerceived();
+  const bool hyb = mol.HasHybridizationPerceived();
+  k.reserve(4 + 7 * mol.NumAtoms() + 4 * mol.NumBonds());
+  k.push_back(static_cast<long>(mol.NumAtoms()));
+  k.push_back(static_cast<long>(mol.NumBonds()));
+  k.push_back(arom);
+  k.push_back(hyb);
+  for (unsigned int i = 1; i <= mol.NumAtoms(); ++i) {
+    OpenBabel::OBAtom *a = mol.GetAtom(static_cast<int>(i));
+    k.push_back(a->GetAtomicNum());
+    k.push_back(a->GetFormalCharge());
+    k.push_back(a->GetIsotope());
+    k.push_back(a->GetSpinMultiplicity());
+    k.push_back(a->GetImplicitHCount());
+    if (arom) k.push_back(a->IsAromatic());
+    if (hyb) k.push_back(a->GetHyb());
+  }
+  for (unsigned int i = 0; i < mol.NumBonds(); ++i) {
+    OpenBabel::OBBond *b = mol.GetBond(static_cast<int>(i));
+    k.push_back(b->GetBeginAtomIdx());
+    k.push_back(b->GetEndAtomIdx());
+    k.push_back(b->GetBondOrder());
+    if (arom) k.push_back(b->IsAromatic());
+  }
+  return k;
+}
+
+// Where private instances log to: nowhere (a stream without a buffer drops
+// everything), like the plugin objects, whose `_logos` starts null.
+std::ostream &discard_log() {
+  static std::ostream sink(nullptr);
+  return sink;
+}
+
+// A fresh private instance of the force field `proto`, made safe to use (see
+// the section comment), or nullptr.
+OpenBabel::OBForceField *new_instance(OpenBabel::OBForceField *proto) {
+  OpenBabel::OBForceField *ff = proto->MakeNewInstance();
+  if (!ff) return nullptr;
+  ff->SetLogFile(&discard_log());
+  ff->SetLogLevel(OBFF_LOGLVL_NONE);
+  // Same line search as the plugin object (MMFF94 picks Newton2Num in its
+  // constructor; the others leave it at the zero of a global, Simple).
+  ff->SetLineSearchType(proto->GetLineSearchType());
+  // The one-argument Setup's first-use branch parses the parameter files and
+  // nulls `_velocityPtr`, `_gradientPtr` and `_grad1`. An empty molecule makes
+  // the rest of that Setup trivial; its result does not matter.
+  OpenBabel::OBMol empty;
+  ff->Setup(empty);
+  return ff;
+}
+
+struct FFSlot {
+  std::string id;
+  OpenBabel::OBForceField *ff = nullptr;  // owned, never deleted
+  // The cached setup is for topology `key` and its term lists leave out no
+  // atoms (were built for an empty ignored-atom set).
+  bool has_setup = false;
+  std::vector<long> key;
+};
+
+// Set up this shim's private instance of force field `id` over `mol` with
+// exactly `constraints`. Returns it (owned by the shim -- never delete it), or
+// nullptr on unknown force field / setup failure. See the section comment.
+OpenBabel::OBForceField *prepare_forcefield(OpenBabel::OBMol &mol, const std::string &id,
+                                            OpenBabel::OBFFConstraints &constraints) {
+  // Pointers into this vector stay valid only until the next emplace_back; a
+  // slot pointer is never kept across calls.
+  static std::vector<FFSlot> slots;
+  FFSlot *slot = nullptr;
+  for (auto &s : slots)
+    if (s.id == id) slot = &s;
+  if (!slot) {
+    OpenBabel::OBForceField *proto = find_forcefield(id);
+    if (!proto) return nullptr;
+    OpenBabel::OBForceField *ff = new_instance(proto);
+    if (!ff) return nullptr;
+    slots.emplace_back();
+    slot = &slots.back();
+    slot->id = id;
+    slot->ff = ff;
+  }
+  OpenBabel::OBForceField *ff = slot->ff;
+  // The constructor default, restated: nothing in the shim enables cut-offs,
+  // and with them on Energy() would sum a stale pair subset (see above).
+  ff->EnableCutOff(false);
+
+  std::vector<long> key = topology_key(mol);
+  // Ignored atoms are left out of the term lists themselves. OpenBabel decides
+  // whether to rebuild them by comparing against the static constraint set,
+  // which other instances share, so a run that ignores atoms always gets a
+  // full setup and leaves the slot marked as needing one afterwards.
+  const bool ignores = !constraints.GetIgnoredBitVec().IsEmpty();
+  if (ignores || !slot->has_setup || slot->key != key) {
+    // Force the full path of the Setup() below. IsSetupNeeded() is true for
+    // any molecule whose atom count differs from the cached one, so first
+    // cache an empty molecule (cheap: nothing to type or enumerate) -- unless
+    // the target is itself empty, which then takes the full path anyway.
+    slot->has_setup = false;
+    if (mol.NumAtoms() != 0) {
+      OpenBabel::OBMol empty;
+      OpenBabel::OBFFConstraints none;
+      ff->Setup(empty, none);
+    }
+  }
+  // The two-argument Setup installs `constraints` (into the static shared set)
+  // on both the full and the fast path, redoing the term lists when the set of
+  // ignored atoms changes.
+  if (!ff->Setup(mol, constraints)) {
+    slot->has_setup = false;
+    return nullptr;
+  }
+  slot->has_setup = !ignores;
+  slot->key = std::move(key);
+  return ff;
+}
+
+// `prepare_forcefield` with no constraints.
+OpenBabel::OBForceField *prepare_forcefield(OpenBabel::OBMol &mol, const std::string &id) {
+  OpenBabel::OBFFConstraints none;
+  return prepare_forcefield(mol, id, none);
 }
 }  // namespace
 
 double mol_energy(const Molecule &mol, rust::Str ff_id, bool &ok) {
   try {
-    OpenBabel::OBForceField *ff = find_forcefield(to_std(ff_id));
+    OpenBabel::OBForceField *ff =
+        prepare_forcefield(const_cast<Molecule &>(mol).mol, to_std(ff_id));
     if (!ff) {
-      ok = false;
-      return std::nan("");
-    }
-    if (!ff->Setup(const_cast<Molecule &>(mol).mol)) {
       ok = false;
       return std::nan("");
     }
@@ -393,8 +577,8 @@ rust::String forcefield_unit(rust::Str ff_id) {
 
 double mol_optimize(Molecule &mol, rust::Str ff_id, uint32_t steps, bool &ok) {
   try {
-    OpenBabel::OBForceField *ff = find_forcefield(to_std(ff_id));
-    if (!ff || !ff->Setup(mol.mol)) {
+    OpenBabel::OBForceField *ff = prepare_forcefield(mol.mol, to_std(ff_id));
+    if (!ff) {
       ok = false;
       return std::nan("");
     }
@@ -650,8 +834,8 @@ rust::Vec<double> mol_conformer_energies(const Molecule &mol, rust::Str ff_id) {
     OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
     int n = m.NumConformers();
     if (n == 0) return out;
-    OpenBabel::OBForceField *ff = find_forcefield(to_std(ff_id));
-    if (!ff || !ff->Setup(m)) return out;
+    OpenBabel::OBForceField *ff = prepare_forcefield(m, to_std(ff_id));
+    if (!ff) return out;
     // Remember the active conformer so we can restore it afterwards.
     const double *saved = m.GetCoordinates();
     int saved_idx = 0;
@@ -662,9 +846,8 @@ rust::Vec<double> mol_conformer_energies(const Molecule &mol, rust::Str ff_id) {
       }
     for (int i = 0; i < n; ++i) {
       m.SetConformer(i);
-      // Push the now-active conformer's coordinates into the field without a
-      // full re-Setup (which would be skipped for this same-topology molecule
-      // and keep stale coordinates).
+      // Push the now-active conformer's coordinates into the field; every
+      // conformer has the same topology, so the setup itself stays valid.
       ff->SetCoordinates(m);
       out.push_back(ff->Energy(false));
     }
@@ -1082,20 +1265,16 @@ rust::Vec<double> ff_export_terms(const Molecule &mol, rust::Str ff_id) {
     // Down-cast with static_cast (not dynamic_cast): OpenBabel does not export
     // the concrete force-field classes' RTTI from its DLL, so a cross-module
     // dynamic_cast would fail to link on MSVC. Gating on the id keeps each
-    // static_cast sound — find_forcefield("UFF") is an OBForceFieldUFF, etc.
+    // static_cast sound — the instance for "UFF" is an OBForceFieldUFF, etc.
     std::string id = to_std(ff_id);
     for (char &ch : id) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
-    OpenBabel::OBForceField *ff = find_forcefield(to_std(ff_id));
+    // The force field copies the molecule into its own cached setup (the
+    // caller's molecule is left untouched); the calculation vectors it fills
+    // hold atom pointers into that copy, valid until the next setup -- which
+    // cannot happen during this single locked call.
+    OpenBabel::OBForceField *ff =
+        prepare_forcefield(const_cast<Molecule &>(mol).mol, to_std(ff_id));
     if (!ff) {
-      out.push_back(0.0);
-      return out;
-    }
-    // Set up on a private copy so the caller's molecule is left untouched. The
-    // force field caches its setup against this copy; the calculation vectors
-    // it fills hold atom pointers into that cached copy, valid until the next
-    // Setup — which is within this single locked call.
-    OpenBabel::OBMol work = mol.mol;
-    if (!ff->Setup(work)) {
       out.push_back(0.0);
       return out;
     }
@@ -1104,7 +1283,7 @@ rust::Vec<double> ff_export_terms(const Molecule &mol, rust::Str ff_id) {
     auto *uff = static_cast<OpenBabel::OBForceFieldUFF *>(ff);
 
     out.push_back(1.0);  // format_ok
-    out.push_back(static_cast<double>(work.NumAtoms()));
+    out.push_back(static_cast<double>(mol.mol.NumAtoms()));
 
     const auto &bonds = uff->RsBondCalcs();
     out.push_back(static_cast<double>(bonds.size()));
@@ -1174,7 +1353,7 @@ rust::Vec<double> ff_export_terms(const Molecule &mol, rust::Str ff_id) {
     } else if (id == "GHEMICAL") {
       auto *g = static_cast<OpenBabel::OBForceFieldGhemical *>(ff);
       out.push_back(1.0);  // format_ok
-      out.push_back(static_cast<double>(work.NumAtoms()));
+      out.push_back(static_cast<double>(mol.mol.NumAtoms()));
 
       const auto &bonds = g->RsBondCalcs();  // harmonic: kb·(r−r0)²
       out.push_back(static_cast<double>(bonds.size()));
@@ -1226,7 +1405,7 @@ rust::Vec<double> ff_export_terms(const Molecule &mol, rust::Str ff_id) {
     } else if (id == "GAFF") {
       auto *g = static_cast<OpenBabel::OBForceFieldGaff *>(ff);
       out.push_back(1.0);  // format_ok
-      out.push_back(static_cast<double>(work.NumAtoms()));
+      out.push_back(static_cast<double>(mol.mol.NumAtoms()));
 
       const auto &bonds = g->RsBondCalcs();  // harmonic: kr·(r−r0)²
       out.push_back(static_cast<double>(bonds.size()));
@@ -1293,7 +1472,7 @@ rust::Vec<double> ff_export_terms(const Molecule &mol, rust::Str ff_id) {
       // variant-correct coefficients, so a single emit path serves both.
       auto *g = static_cast<OpenBabel::OBForceFieldMMFF94 *>(ff);
       out.push_back(1.0);  // format_ok
-      out.push_back(static_cast<double>(work.NumAtoms()));
+      out.push_back(static_cast<double>(mol.mol.NumAtoms()));
 
       const auto &bonds = g->RsBondCalcs();  // 143.9325·0.5·kb·δ²·(1−2δ+7/3·δ²)
       out.push_back(static_cast<double>(bonds.size()));
@@ -1625,13 +1804,9 @@ rust::Vec<double> ff_energy_components(const Molecule &mol, rust::Str ff_id) {
   try {
     std::string id = to_std(ff_id);
     for (char &ch : id) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
-    OpenBabel::OBForceField *ff = find_forcefield(to_std(ff_id));
+    OpenBabel::OBForceField *ff =
+        prepare_forcefield(const_cast<Molecule &>(mol).mol, to_std(ff_id));
     if (!ff) {
-      out.push_back(0.0);
-      return out;
-    }
-    OpenBabel::OBMol work = mol.mol;
-    if (!ff->Setup(work)) {
       out.push_back(0.0);
       return out;
     }
@@ -1698,31 +1873,14 @@ void constraints_set_factor(Constraints &c, double factor) {
 // --- Geometry optimization -----------------------------------------------
 
 namespace {
-// Set up the force-field plugin singleton over `mol` with `constraints`. Returns
-// the singleton (NOT owned — never delete it), or nullptr on unknown force field
-// / setup failure.
-//
-// We use the shared singleton, matching `mol_optimize` / `mol_energy`: the safe
-// wrapper serializes every OpenBabel call and runs each whole optimization as one
-// atomic call, so the singleton's per-run state is used entirely within one lock
-// hold. (Private MakeNewInstance() instances are avoided here — creating and
-// destroying them concurrently with molecule teardown has proven to corrupt the
-// heap.)
-//
-// Constraints are installed with an explicit SetConstraints() AFTER Setup(),
-// rather than via the two-argument Setup(mol, constraints), on purpose:
-// OBForceField::Setup caches its previous setup and, when IsSetupNeeded() sees a
-// topologically identical molecule, takes a fast path that silently keeps the
-// PREVIOUS constraints. SetConstraints() unconditionally installs ours (and
-// re-runs the term setup when the ignore set changes), so restraints are applied
-// correctly no matter what was optimized just before.
+// Set up the shim's private force-field instance over `mol` with exactly
+// `constraints` (see `prepare_forcefield`). Returns it (NOT owned -- never
+// delete it), or nullptr on unknown force field / setup failure. The safe
+// wrapper runs each whole optimisation as one atomic call under the global
+// lock, so the instance's per-run state is used entirely within one lock hold.
 OpenBabel::OBForceField *setup_forcefield(OpenBabel::OBMol &mol, const std::string &ff_id,
                                           OpenBabel::OBFFConstraints &constraints) {
-  OpenBabel::OBForceField *ff = find_forcefield(ff_id);
-  if (!ff) return nullptr;
-  if (!ff->Setup(mol)) return nullptr;
-  ff->SetConstraints(constraints);
-  return ff;
+  return prepare_forcefield(mol, ff_id, constraints);
 }
 void ff_initialize(OpenBabel::OBForceField *ff, uint32_t algorithm, int steps, double econv) {
   switch (algorithm) {
@@ -1749,9 +1907,11 @@ bool ff_take_steps(OpenBabel::OBForceField *ff, uint32_t algorithm, int n) {
       return ff->SteepestDescentTakeNSteps(n);
   }
 }
-// Clear the shared static constraint set so later unconstrained force-field
-// calls (mol_energy / mol_optimize) are not tripped up by our restraints. The
-// force field is the shared singleton and must NOT be deleted.
+// Clear the static constraint set -- shared by every force-field instance,
+// including the plugin objects OpenBabel's own ops (gen3d, conformer search)
+// set up with the one-argument Setup() -- so our restraints cannot leak into
+// them. The shim's own calls install their constraints explicitly anyway. The
+// force field is the shim's private instance and must NOT be deleted.
 void ff_finish(OpenBabel::OBForceField *ff) {
   if (!ff) return;
   try {

@@ -530,6 +530,33 @@ impl Molecule {
     /// Only meaningful once the molecule has 3D coordinates (see
     /// [`generate_3d`](Self::generate_3d)). The unit is the force field's own
     /// (see [`forcefield_energy_unit`](crate::forcefield_energy_unit)).
+    ///
+    /// # Determinism
+    ///
+    /// The result depends only on this molecule — never on what was evaluated,
+    /// optimized or built before. This applies to every force-field entry point
+    /// ([`energy`](Self::energy), [`conformer_energies`](Self::conformer_energies),
+    /// [`optimize_geometry`](Self::optimize_geometry),
+    /// [`optimize_geometry_with`](Self::optimize_geometry_with),
+    /// [`minimize`](Self::minimize) and the `_rs` term export). They use a
+    /// private force-field instance per force field (not OpenBabel's shared
+    /// plugin object, which e.g. [`generate_3d`](Self::generate_3d)
+    /// reconfigures), install exactly the requested constraints (none here),
+    /// and redo the full setup — atom typing, charges, term lists — whenever
+    /// the molecule's topology differs from the one set up last.
+    ///
+    /// Only when the topology is exactly the one set up by the previous call to
+    /// the same force field — the same atoms in the same order (element, formal
+    /// charge, isotope, spin, implicit hydrogens), the same bonds (end atoms and
+    /// order) and the same already-perceived aromaticity / hybridization — is
+    /// that setup reused and just the coordinates replaced. Such a setup is a
+    /// function of the topology alone, so the result is the same as a fresh
+    /// setup's; it makes scans that call
+    /// [`set_coordinates`](Self::set_coordinates) (or
+    /// [`set_torsion`](Self::set_torsion), …) and then `energy` on one molecule
+    /// cost microseconds per point instead of the milliseconds of a full setup.
+    /// Interleaving a different molecule or force field between the points
+    /// costs a full setup each time but gives the same numbers.
     pub fn energy(&self, forcefield: &str) -> Option<f64> {
         let mut ok = true;
         let e = with_ob(|| ffi::mol_energy(self.as_inner(), forcefield, &mut ok));

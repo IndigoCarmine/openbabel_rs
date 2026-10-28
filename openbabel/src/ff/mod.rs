@@ -258,17 +258,12 @@ mod parity {
 
     /// Serialize the OpenBabel-reference parity tests against one another.
     ///
-    /// `built_3d`, `export_flat`, `energy`, and `optimize_geometry` all drive
-    /// OpenBabel's shared, non-thread-safe force-field singleton. Although every
-    /// FFI call is individually locked, OpenBabel's `Setup` keeps an order-
-    /// dependent cross-call cache (`_mol` plus the precomputed calc vectors), so
-    /// interleaving two of these multi-call test bodies — which `cargo test`
-    /// does by default — makes OpenBabel reuse stale non-bonded terms and return
-    /// inconsistent energies for the *same* molecule. That non-thread-safety is
-    /// exactly what this module's Rust core exists to bypass; these tests only
-    /// validate the Rust core against OpenBabel's *sequential* ground truth, so
-    /// they hold this guard for their full duration. (The Rust optimize path is
-    /// itself lock-free and gets a real concurrency test elsewhere.)
+    /// `built_3d`, `export_flat`, `energy`, and `optimize_geometry` each run
+    /// atomically under the crate lock and no longer depend on call history
+    /// (see `Molecule::energy`), so interleaving is no longer a correctness
+    /// problem; the guard just keeps each parity body's OpenBabel calls in one
+    /// uninterrupted sequence. (The Rust optimize path is itself lock-free and
+    /// gets a real concurrency test elsewhere.)
     fn ob_guard() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         LOCK.lock().unwrap_or_else(|e| e.into_inner())
