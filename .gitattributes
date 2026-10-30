@@ -1,0 +1,4 @@
+# Test fixtures and OpenBabel patches are read byte for byte: keep them LF on
+# every checkout, whatever core.autocrlf says.
+openbabel/tests/data/** text eol=lf
+openbabel-sys/patches/*.patch text eol=lf
