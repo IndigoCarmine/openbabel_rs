@@ -33,6 +33,10 @@ const EXPORT_DIR_ENV: &str = "OPENBABEL_SYS_EXPORT_DIR";
 /// See [`prebuilt_key`].
 const KEY_FILE: &str = "openbabel-sys-prebuilt.txt";
 
+/// The directory, beside this script, of fixes to the vendored OpenBabel
+/// sources. See [`apply_source_patches`].
+const PATCH_DIR: &str = "patches";
+
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let workspace_root = manifest_dir.parent().unwrap();
@@ -46,6 +50,7 @@ fn main() {
     println!("cargo:rerun-if-changed=shim/shim.h");
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed={PATCH_DIR}");
     println!("cargo:rerun-if-env-changed={PREBUILT_DIR_ENV}");
     println!("cargo:rerun-if-env-changed={EXPORT_DIR_ENV}");
 
@@ -62,13 +67,14 @@ fn main() {
         eigen_dir.display()
     );
 
-    let key = prebuilt_key(&manifest_dir, &ob_src, &eigen_dir);
+    let patches = source_patches(&manifest_dir.join(PATCH_DIR));
+    let key = prebuilt_key(&manifest_dir, &patches, &ob_src, &eigen_dir);
     let prebuilt_dir = env::var_os(PREBUILT_DIR_ENV).filter(|dir| !dir.is_empty());
 
     // 1. Build + install OpenBabel into OUT_DIR, or take a prebuilt install.
     let dst = match &prebuilt_dir {
         Some(dir) => use_prebuilt(PathBuf::from(dir), key.as_deref()),
-        None => build_openbabel(&ob_src, &eigen_dir, key.as_deref()),
+        None => build_openbabel(&ob_src, &eigen_dir, &patches, key.as_deref()),
     };
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
@@ -250,13 +256,21 @@ fn main() {
 
 /// Build OpenBabel from the vendored sources and install it into `OUT_DIR`,
 /// returning the install root.
-fn build_openbabel(ob_src: &Path, eigen_dir: &Path, key: Option<&str>) -> PathBuf {
+fn build_openbabel(
+    ob_src: &Path,
+    eigen_dir: &Path,
+    patches: &[PathBuf],
+    key: Option<&str>,
+) -> PathBuf {
     // Fail early with an actionable message if cmake is missing. The `cmake`
     // crate shells out to the `cmake` binary and, when it is absent, panics
     // deep inside the crate with a generic "is `cmake` not installed?" — which
     // buries the one thing the user needs: the command to install it. Cargo has
     // no way to install system build tools itself, so we can only guide.
     ensure_cmake_present();
+
+    // Fix the OpenBabel bugs this crate carries patches for (see fn docs).
+    apply_source_patches(ob_src, patches);
 
     // Make the bundled InChI library linkable on MSVC (see fn docs).
     ensure_inchi_auxinfo_stubs(ob_src);
@@ -442,29 +456,47 @@ fn use_prebuilt(dir: PathBuf, key: Option<&str>) -> PathBuf {
 /// checked against the checkout about to use it.
 ///
 /// Two checkouts produce interchangeable trees when they agree on the target,
-/// on the OpenBabel and Eigen commits, and on this build script -- which holds
-/// the CMake options and every patch applied to the OpenBabel tree, so a change
-/// to either shows up in its hash. The script is hashed without CR bytes: a
-/// Windows checkout and cargo's own checkout of the same commit can disagree on
-/// line endings.
+/// on the OpenBabel and Eigen commits, on this build script -- which holds the
+/// CMake options and the edits generated into the OpenBabel tree -- and on the
+/// patch files in [`PATCH_DIR`], so a change to any of them shows up in a hash.
+/// The script and the patches are hashed without CR bytes: a Windows checkout
+/// and cargo's own checkout of the same commit can disagree on line endings.
 ///
 /// `None` when a submodule's commit cannot be determined.
-fn prebuilt_key(manifest_dir: &Path, ob_src: &Path, eigen_dir: &Path) -> Option<String> {
+fn prebuilt_key(
+    manifest_dir: &Path,
+    patches: &[PathBuf],
+    ob_src: &Path,
+    eigen_dir: &Path,
+) -> Option<String> {
     const CR: u8 = 13;
 
     let mut script = fs::read(manifest_dir.join("build.rs")).ok()?;
     script.retain(|&b| b != CR);
 
+    // Every patch, by name and content, in the order they are applied.
+    let mut patch_bytes = Vec::new();
+    for patch in patches {
+        patch_bytes.extend_from_slice(patch.file_name()?.to_str()?.as_bytes());
+        patch_bytes.push(0);
+        let mut text = fs::read(patch).ok()?;
+        text.retain(|&b| b != CR);
+        patch_bytes.extend_from_slice(&text);
+        patch_bytes.push(0);
+    }
+
     Some(format!(
-        "openbabel-sys prebuilt 1\n\
+        "openbabel-sys prebuilt 2\n\
          target {}\n\
          openbabel-src {}\n\
          eigen {}\n\
-         build.rs {:016x}\n",
+         build.rs {:016x}\n\
+         patches {:016x}\n",
         env::var("TARGET").unwrap(),
         submodule_commit(ob_src)?,
         submodule_commit(eigen_dir)?,
         fnv1a64(&script),
+        fnv1a64(&patch_bytes),
     ))
 }
 
@@ -645,6 +677,185 @@ fn ensure_cmake_present() {
          {hint}\n\
          (Or set the CMAKE environment variable to the full path of a cmake binary.)\n"
     );
+}
+
+/// The patch files in `dir` (`*.patch`), in the order they are applied: by
+/// file name. Empty when the directory is missing.
+fn source_patches(dir: &Path) -> Vec<PathBuf> {
+    let mut patches: Vec<PathBuf> = fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("patch"))
+                .collect()
+        })
+        .unwrap_or_default();
+    patches.sort();
+    patches
+}
+
+/// Apply `patches` -- unified diffs against the vendored OpenBabel tree, as
+/// `git diff` writes them -- to the tree at `ob_src`, in order.
+///
+/// They fix OpenBabel bugs this crate's callers run into (the minimizers'
+/// convergence test and conjugate-gradient update, the restraint and
+/// out-of-plane gradients, …; each patch's header says what and why).
+/// OpenBabel is a submodule of the upstream repository, so a fix cannot be
+/// committed there; it is applied at build time instead, like the generated
+/// edits below.
+///
+/// The series is applied file by file. A file the whole series can be undone
+/// from -- every patch touching it, last first, matching its patched side --
+/// already carries it (an earlier build applied it) and is left alone, so the
+/// step is idempotent and leaves modification times, and so CMake's
+/// incremental build, undisturbed. Otherwise each patch must match exactly,
+/// with the CRs a Windows checkout adds ignored. Anything else panics: a patch
+/// that no longer fits, after a submodule bump or an edit to a patch, has to
+/// be redone or the sources reset, not skipped or half applied.
+fn apply_source_patches(ob_src: &Path, patches: &[PathBuf]) {
+    // Each file's hunks, patch by patch, in application order.
+    let mut by_file: Vec<(String, Series)> = Vec::new();
+    for patch in patches {
+        println!("cargo:rerun-if-changed={}", patch.display());
+        let text = fs::read_to_string(patch)
+            .unwrap_or_else(|err| panic!("read {}: {err}", patch.display()));
+        for file in parse_patch(&text) {
+            match by_file.iter_mut().find(|(path, _)| *path == file.path) {
+                Some((_, series)) => series.push((patch, file.hunks)),
+                None => by_file.push((file.path, vec![(patch, file.hunks)])),
+            }
+        }
+    }
+    for (path, series) in &by_file {
+        let target = ob_src.join(path);
+        // Watched so that sources reset by `git submodule update` get patched
+        // again: cargo reruns this script for nothing outside the crate.
+        println!("cargo:rerun-if-changed={}", target.display());
+        patch_file(&target, series);
+    }
+}
+
+/// A hunk's old and new lines, context included.
+type Hunk = (Vec<String>, Vec<String>);
+
+/// One file's hunks, patch by patch, in application order.
+type Series<'a> = Vec<(&'a Path, Vec<Hunk>)>;
+
+/// One file's part of a unified diff: the path, and each hunk's old and new
+/// lines (context included), in file order.
+struct FilePatch {
+    path: String,
+    hunks: Vec<Hunk>,
+}
+
+/// The line counts of a hunk header, `@@ -12,7 +12,9 @@ …` -> `(7, 9)`. A
+/// count left out (`-12 +12`) is 1.
+fn hunk_counts(header: &str) -> Option<(usize, usize)> {
+    let mut ranges = header.strip_prefix("@@ ")?.split(' ');
+    let count = |range: &str| match range.split_once(',') {
+        Some((_, n)) => n.parse().ok(),
+        None => Some(1),
+    };
+    let old = count(ranges.next()?.strip_prefix('-')?)?;
+    let new = count(ranges.next()?.strip_prefix('+')?)?;
+    Some((old, new))
+}
+
+/// Split a unified diff into its per-file parts. Everything outside the hunks
+/// -- the description before the first file, `diff --git` and `index` lines --
+/// is skipped; each hunk is read for exactly the line counts its header gives.
+fn parse_patch(text: &str) -> Vec<FilePatch> {
+    const CR: char = '\u{d}';
+    let mut files: Vec<FilePatch> = Vec::new();
+    // Lines still to read of the current hunk's old and new sides.
+    let mut left: (usize, usize) = (0, 0);
+    for line in text.lines() {
+        let line = line.strip_suffix(CR).unwrap_or(line);
+        if left != (0, 0) {
+            let Some((old, new)) = files.last_mut().and_then(|f| f.hunks.last_mut()) else {
+                left = (0, 0);
+                continue;
+            };
+            if line.starts_with('\\') {
+                continue; // "\ No newline at end of file"
+            }
+            // An editor that trims trailing whitespace turns a context line
+            // holding nothing but its leading space into an empty one.
+            let (kind, body) = match line.chars().next() {
+                Some(c @ (' ' | '-' | '+')) => (c, &line[1..]),
+                _ => (' ', line),
+            };
+            if kind != '+' {
+                old.push(body.to_owned());
+                left.0 = left.0.saturating_sub(1);
+            }
+            if kind != '-' {
+                new.push(body.to_owned());
+                left.1 = left.1.saturating_sub(1);
+            }
+        } else if let Some(path) = line.strip_prefix("+++ b/") {
+            files.push(FilePatch { path: path.to_owned(), hunks: Vec::new() });
+        } else if let (Some(counts), Some(file)) = (hunk_counts(line), files.last_mut()) {
+            file.hunks.push((Vec::new(), Vec::new()));
+            left = counts;
+        }
+    }
+    files
+}
+
+/// `lines` with `hunks` applied -- or, `reverse`, undone -- or `None` unless
+/// every hunk matches. Hunks match in order and without overlap.
+fn apply_hunks(lines: &[String], hunks: &[Hunk], reverse: bool) -> Option<Vec<String>> {
+    let mut out = Vec::with_capacity(lines.len());
+    let mut next = 0;
+    for (old, new) in hunks {
+        let (from, to) = if reverse { (new, old) } else { (old, new) };
+        let at = (next..=lines.len().checked_sub(from.len())?)
+            .find(|&i| lines[i..i + from.len()] == from[..])?;
+        out.extend_from_slice(&lines[next..at]);
+        out.extend(to.iter().cloned());
+        next = at + from.len();
+    }
+    out.extend_from_slice(&lines[next..]);
+    Some(out)
+}
+
+/// Bring the file at `target` to the end of `series` (see
+/// [`apply_source_patches`]).
+fn patch_file(target: &Path, series: &[(&Path, Vec<Hunk>)]) {
+    const CR: char = '\u{d}';
+    let src = fs::read_to_string(target).unwrap_or_else(|err| {
+        panic!("patching {}, which cannot be read: {err}", target.display())
+    });
+    let crlf = src.contains(CR);
+    let lines: Vec<String> =
+        src.split('\n').map(|l| l.strip_suffix(CR).unwrap_or(l).to_owned()).collect();
+
+    let undone = series
+        .iter()
+        .rev()
+        .try_fold(lines.clone(), |lines, (_, hunks)| apply_hunks(&lines, hunks, true));
+    if undone.is_some() {
+        return; // applied by an earlier build
+    }
+
+    let mut patched = lines;
+    for (patch, hunks) in series {
+        patched = apply_hunks(&patched, hunks, false).unwrap_or_else(|| {
+            panic!(
+                "{} does not apply to {}: the vendored OpenBabel sources differ from the ones \
+                 it was made against. If a patch was edited, reset the sources \
+                 (git -C vendor/openbabel-src checkout -- .); otherwise redo the patch for the \
+                 checked-out submodule commit.",
+                patch.display(),
+                target.display()
+            )
+        });
+    }
+    let eol = if crlf { "\u{d}\n" } else { "\n" };
+    fs::write(target, patched.join(eol))
+        .unwrap_or_else(|err| panic!("write {}: {err}", target.display()));
 }
 
 /// Write inert implementations of four InChI AuxInfo entry points into the

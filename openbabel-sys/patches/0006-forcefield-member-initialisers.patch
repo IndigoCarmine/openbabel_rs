@@ -1,0 +1,70 @@
+OBForceField: initialise pointer and logging members, so heap instances are safe
+
+The plugin constructor (MAKE_PLUGIN) initialises no OBForceField data
+member, and of the force fields only MMFF94's constructor nulls some.
+The registered plugin objects are globals, so zero-initialised; an
+instance from MakeNewInstance() is on the heap and starts with garbage
+_grad1, _gradientPtr, _velocityPtr, _logos and _loglvl, which the
+two-argument Setup(), ConjugateGradientsInitialize() and the destructor
+delete[] or log through. Reproduced: a UFF MakeNewInstance() on recycled
+heap memory, run with L-BFGS and deleted, dies with
+STATUS_HEAP_CORRUPTION; MMFF94 does not. That is the corruption
+openbabel_rs saw as "UFF + L-BFGS" and refused the pairing for. Give the
+members default initialisers (no layout change).
+
+diff --git a/include/openbabel/forcefield.h b/include/openbabel/forcefield.h
+index 5a1939838..fdaac479e 100644
+--- a/include/openbabel/forcefield.h
++++ b/include/openbabel/forcefield.h
+@@ -524,24 +524,34 @@ const double GAS_CONSTANT = 8.31446261815324e-3 / KCAL_TO_KJ;  //!< kcal mol^-1
+     bool IsInSameRing(OBAtom* a, OBAtom* b);
+ 
+     // general variables
++    //
++    // The pointers and the logging state are initialised here, not left to
++    // the constructors: MAKE_PLUGIN's constructor sets none of them and only
++    // MMFF94's sets some. The registered plugin objects are globals, so they
++    // start zeroed anyway; an instance from MakeNewInstance() is on the heap,
++    // and started with a garbage _grad1 / _gradientPtr / _velocityPtr that
++    // Setup(mol, constraints), ConjugateGradientsInitialize() and the
++    // destructor delete[] -- and a garbage _logos / _loglvl to log through.
++    // That corrupted the heap for every force field but MMFF94 (seen as
++    // UFF + L-BFGS).
+     OBMol 	_mol; //!< Molecule to be evaluated or minimized
+-    bool 	_init; //!< Used to make sure we only parse the parameter file once, when needed
++    bool 	_init = false; //!< Used to make sure we only parse the parameter file once, when needed
+     std::string	_parFile; //!< parameter file name
+-    bool 	_validSetup; //!< was the last call to Setup successful
+-    double	*_gradientPtr; //!< pointer to the gradients (used by AddGradient(), minimization functions, ...)
++    bool 	_validSetup = false; //!< was the last call to Setup successful
++    double	*_gradientPtr = nullptr; //!< pointer to the gradients (used by AddGradient(), minimization functions, ...)
+     // logging variables
+-    std::ostream* _logos; //!< Output for logfile
++    std::ostream* _logos = nullptr; //!< Output for logfile
+     char 	_logbuf[BUFF_SIZE+1]; //!< Temporary buffer for logfile output
+-    int 	_loglvl; //!< Log level for output
+-    int 	_origLogLevel;
++    int 	_loglvl = OBFF_LOGLVL_NONE; //!< Log level for output
++    int 	_origLogLevel = OBFF_LOGLVL_NONE;
+     // conformer genereation (rotor search) variables
+     int 	_current_conformer; //!< used to hold i for current conformer (needed by UpdateConformers)
+     std::vector<double> _energies; //!< used to hold the energies for all conformers
+     // minimization variables
+     double 	_econv, _gconv, _e_n1; //!< Used for conjugate gradients and steepest descent(Initialize and TakeNSteps)
+     int 	_cstep, _nsteps; //!< Used for conjugate gradients and steepest descent(Initialize and TakeNSteps)
+-    double 	*_grad1; //!< Used for conjugate gradients and steepest descent(Initialize and TakeNSteps)
+-    unsigned int _ncoords; //!< Number of coordinates for conjugate gradients
++    double 	*_grad1 = nullptr; //!< Used for conjugate gradients and steepest descent(Initialize and TakeNSteps)
++    unsigned int _ncoords = 0; //!< Number of coordinates for conjugate gradients
+     int         _linesearch; //!< LineSearch type
+     //! Hidden L-BFGS history. Forward-declared here (full definition lives
+     //! in forcefield.cpp behind HAVE_EIGEN3) to keep Eigen out of this header
+@@ -559,7 +569,7 @@ const double GAS_CONSTANT = 8.31446261815324e-3 / KCAL_TO_KJ;  //!< kcal mol^-1
+     // molecular dynamics variables
+     double 	_timestep; //!< Molecular dynamics time step in picoseconds
+     double 	_temp; //!< Molecular dynamics temperature in Kelvin
+-    double 	*_velocityPtr; //!< pointer to the velocities
++    double 	*_velocityPtr = nullptr; //!< pointer to the velocities
+     // contraint varibles
+     static OBFFConstraints _constraints; //!< Constraints
+     static unsigned int _fixAtom; //!< SetFixAtom()/UnsetFixAtom()

@@ -40,6 +40,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
+#include <new>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -404,9 +406,11 @@ double descriptor(const Molecule &mol, rust::Str id, bool &ok) {
 // with garbage, logs through a garbage stream pointer and delete[]s a garbage
 // `_grad1` (only the one-argument Setup's first-use branch resets it,
 // forcefield.cpp:858-864; the two-argument one does not, :913-918) --
-// corrupting the heap, which is why this shim used to avoid private instances.
-// `new_instance` gives each one a valid log stream and level and runs that
-// first-use branch before anything else.
+// corrupting the heap, which is why this shim used to avoid private instances
+// (and refused UFF + L-BFGS, where it showed). OpenBabel as patched here
+// (openbabel-sys/patches) initialises those members itself; `new_instance`
+// still gives each instance a log stream that discards, and runs that
+// first-use branch, which parses the parameter files, before anything else.
 
 namespace {
 // Look up a force field plugin by id via the DLL-exported plugin registry.
@@ -2061,6 +2065,194 @@ rust::Vec<double> optimizer_run_trajectory(Molecule &mol, rust::Str ff_id, uint3
     ff_finish(ff);
   }
   return out;
+}
+
+rust::Vec<double> ff_energy_gradient(const Molecule &mol, rust::Str ff_id,
+                                     const Constraints &constraints) {
+  rust::Vec<double> out;
+  OpenBabel::OBForceField *ff = nullptr;
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    ff = setup_forcefield(m, to_std(ff_id), const_cast<Constraints &>(constraints).c);
+    if (!ff) return out;
+    OpenBabel::OBFFConstraints &installed = ff->GetConstraints();
+    // Energy(true) fills the force-field gradients; GetConstraintEnergy() fills
+    // the restraint gradients that GetGradient(idx) then reads -- the order the
+    // minimizers evaluate them in.
+    double e = ff->Energy(true) + installed.GetConstraintEnergy();
+    out.push_back(e);
+    const bool analytic = ff->HasAnalyticalGradients();
+    const unsigned int natoms = m.NumAtoms();
+    for (unsigned int i = 1; i <= natoms; ++i) {
+      OpenBabel::OBAtom *a = m.GetAtom(static_cast<int>(i));
+      OpenBabel::vector3 g(0.0, 0.0, 0.0);
+      if (!installed.IsFixed(static_cast<int>(i))) {
+        if (analytic) {
+          // Both GetGradient()s return the force, -dE/dx.
+          g = -(ff->GetGradient(a) + installed.GetGradient(static_cast<int>(i)));
+        } else {
+          // Central differences of the same surface, for a force field without
+          // analytic gradients. The force field evaluates its own copy of the
+          // molecule, so perturb a copy and hand it the coordinates.
+          const double h = 1.0e-5;
+          OpenBabel::OBMol probe(m);
+          double *xyz = probe.GetCoordinates();
+          double comp[3];
+          for (int axis = 0; axis < 3; ++axis) {
+            double &x = xyz[(i - 1) * 3 + axis];
+            const double x0 = x;
+            x = x0 + h;
+            ff->SetCoordinates(probe);
+            double ep = ff->Energy(false) + installed.GetConstraintEnergy();
+            x = x0 - h;
+            ff->SetCoordinates(probe);
+            double em = ff->Energy(false) + installed.GetConstraintEnergy();
+            x = x0;
+            comp[axis] = (ep - em) / (2.0 * h);
+          }
+          ff->SetCoordinates(m);
+          g.Set(comp[0], comp[1], comp[2]);
+        }
+        if (installed.IsXFixed(static_cast<int>(i))) g.SetX(0.0);
+        if (installed.IsYFixed(static_cast<int>(i))) g.SetY(0.0);
+        if (installed.IsZFixed(static_cast<int>(i))) g.SetZ(0.0);
+      }
+      out.push_back(g.x());
+      out.push_back(g.y());
+      out.push_back(g.z());
+    }
+    ff_finish(ff);
+  } catch (...) {
+    ff_finish(ff);
+    out = rust::Vec<double>();
+  }
+  return out;
+}
+
+// --- Test support: force-field instances on reused heap memory ------------
+//
+// A private instance comes from MakeNewInstance(), on the heap, and gets
+// OBForceField's members from whatever initialisation OBForceField itself
+// gives them: UFF's constructor (forcefielduff.h) sets only `_init` and
+// `_validSetup` of them, GAFF's and Ghemical's likewise. `HeapProbe` is a force
+// field whose constructor does exactly what UFF's does -- the shim cannot
+// construct an OBForceFieldUFF itself, its virtual functions are not exported
+// from the OpenBabel DLL -- with a harmonic bond stretch for an energy, so that
+// Setup() and L-BFGS have something to work on.
+
+namespace {
+class HeapProbe : public OpenBabel::OBForceField {
+ public:
+  explicit HeapProbe(const char *id) : OBForceField(id, false) {
+    // OBForceFieldUFF's constructor body, verbatim.
+    _validSetup = false;
+    _init = false;
+    _rvdw = 7.0;
+    _rele = 15.0;
+    _epsilon = 1.0;
+    _pairfreq = 10;
+    _cutoff = false;
+    _linesearch = OpenBabel::LineSearchType::Newton2Num;
+  }
+
+  OBForceField *MakeNewInstance() override { return new HeapProbe(_id); }
+  std::string GetUnit() override { return "kcal/mol"; }
+  bool HasAnalyticalGradients() override { return true; }
+  bool ParseParamFile() override { return true; }
+  bool SetTypes() override { return true; }
+  bool SetupCalculations() override { return true; }
+
+  // Sum over bonds of (r - 1.5)^2; with `gradients`, also the force on each
+  // atom (OpenBabel's convention: -dE/dx).
+  double Energy(bool gradients = true) override {
+    if (gradients) ClearGradients();
+    double e = 0.0;
+    for (unsigned int i = 0; i < _mol.NumBonds(); ++i) {
+      OpenBabel::OBBond *b = _mol.GetBond(static_cast<int>(i));
+      OpenBabel::OBAtom *a = b->GetBeginAtom();
+      OpenBabel::OBAtom *c = b->GetEndAtom();
+      OpenBabel::vector3 d = a->GetVector() - c->GetVector();
+      const double r = d.length();
+      const double dr = r - 1.5;
+      e += dr * dr;
+      if (gradients && r > 0.0) {
+        OpenBabel::vector3 f = d * (-2.0 * dr / r);
+        double fa[3] = {f.x(), f.y(), f.z()};
+        double fc[3] = {-f.x(), -f.y(), -f.z()};
+        AddGradient(fa, static_cast<int>(a->GetIdx()));
+        AddGradient(fc, static_cast<int>(c->GetIdx()));
+      }
+    }
+    return e;
+  }
+
+  // The OBForceField members a fresh instance must start with, which
+  // Setup(mol, constraints), the minimizers and the destructor rely on: the
+  // names of those that do not hold their initial values, comma-separated.
+  std::string uninitialised() const {
+    std::string out;
+    auto check = [&out](bool ok, const char *name) {
+      if (ok) return;
+      if (!out.empty()) out += ", ";
+      out += name;
+    };
+    check(!_init, "_init");
+    check(!_validSetup, "_validSetup");
+    check(_gradientPtr == nullptr, "_gradientPtr");
+    check(_grad1 == nullptr, "_grad1");
+    check(_velocityPtr == nullptr, "_velocityPtr");
+    check(_lbfgsState == nullptr, "_lbfgsState");
+    check(_ncoords == 0, "_ncoords");
+    check(_logos == nullptr, "_logos");
+    check(_loglvl == OBFF_LOGLVL_NONE, "_loglvl");
+    check(_origLogLevel == OBFF_LOGLVL_NONE, "_origLogLevel");
+    return out;
+  }
+};
+}  // namespace
+
+rust::String probe_heap_forcefield(const Molecule &mol) {
+  try {
+    // The id of a registered force field, as MakeNewInstance() passes its own:
+    // an instance under an id already in the plugin map does not register.
+    OpenBabel::OBForceField *proto = find_forcefield("UFF");
+    if (!proto) return rust::String("no UFF plugin");
+
+    // Memory a previous allocation left behind, as MakeNewInstance()'s `new`
+    // may hand out.
+    void *mem = ::operator new(sizeof(HeapProbe));
+    std::memset(mem, 0xA5, sizeof(HeapProbe));
+    HeapProbe *ff = new (mem) HeapProbe(proto->GetID());
+
+    std::string garbage = ff->uninitialised();
+    if (!garbage.empty()) {
+      // Leaked: destroying it would delete[] the garbage pointers.
+      return rust::String("uninitialised after construction: " + garbage);
+    }
+
+    std::string failure;
+    OpenBabel::OBMol work(const_cast<Molecule &>(mol).mol);
+    OpenBabel::OBFFConstraints none;
+    if (!ff->Setup(work, none)) {
+      failure = "Setup(mol, constraints) failed";
+    } else {
+      const double start = ff->Energy(false);
+      ff->LBFGSInitialize(500, 1e-8);
+      while (ff->LBFGSTakeNSteps(10)) {
+      }
+      const double end = ff->Energy(false);
+      if (!(end < start))
+        failure = "L-BFGS did not lower the energy: " + std::to_string(start) + " -> " +
+                  std::to_string(end);
+    }
+    ff->~HeapProbe();
+    ::operator delete(mem);
+    return rust::String(failure);
+  } catch (const std::exception &e) {
+    return rust::String(std::string("exception: ") + e.what());
+  } catch (...) {
+    return rust::String("exception");
+  }
 }
 
 // --- Molecule construction & editing --------------------------------------

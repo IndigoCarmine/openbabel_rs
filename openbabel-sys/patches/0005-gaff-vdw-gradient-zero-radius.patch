@@ -1,0 +1,31 @@
+GAFF: van der Waals gradient without 0/0 for zero-radius pairs
+
+The VdW gradient was written 12 Eab / RVDWab * (term7 - term13). For a
+pair whose radii sum to zero -- two hydroxyl hydrogens, GAFF type ho,
+R = 0 and eps = 0 -- that is 0/0 = NaN, while the pair's energy is a plain
+0. Any molecule with two OH groups got a NaN gradient on those hydrogens;
+L-BFGS (whose line search does not zero NaN directions) then found no
+lower energy and stopped after one step, reporting convergence (taxol:
+1 step at E 662 where CG reaches ~470). Use the equal
+12 Eab (term6 - term12) / r.
+
+diff --git a/src/forcefields/forcefieldgaff.cpp b/src/forcefields/forcefieldgaff.cpp
+index 242619d73..d2375ad80 100644
+--- a/src/forcefields/forcefieldgaff.cpp
++++ b/src/forcefields/forcefieldgaff.cpp
+@@ -369,9 +369,12 @@ namespace OpenBabel
+     energy = Eab * (term12 - 2.0*term6);
+ 
+     if (gradients) {
+-      const double term13 = term * term12; // ^13
+-      const double term7 = term * term6; // ^7
+-      const double dE = (12.0 * Eab / RVDWab) * (-term13 + term7);
++      // dE/dr = 12 Eab (term6 - term12) / r. Written as 12 Eab / RVDWab times
++      // (term7 - term13), as it was, it is 0/0 = NaN for a pair whose radii
++      // sum to zero -- two hydroxyl hydrogens (type ho, R = 0, eps = 0) --
++      // although the pair's energy is a plain 0. One NaN poisons the whole
++      // gradient: L-BFGS then finds no step and stops where it started.
++      const double dE = 12.0 * Eab * (term6 - term12) / rab;
+       OBForceField::VectorSelfMultiply(force_a, dE);
+       OBForceField::VectorSelfMultiply(force_b, dE);
+     }

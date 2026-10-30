@@ -1,0 +1,55 @@
+Out-of-plane gradients: fix VectorOOPDerivative's sin^2 scaling and UFF's 1/cos
+
+The double* overload of VectorOOPDerivative multiplied the i and k
+derivatives by sin(theta) / length where the formula beside it (and the
+vector3 overload) divide by length * sin(theta): those two came out
+sin^2(theta) times too large against l's, and the gradient no longer
+matched the energy -- a spurious net torque on every out-of-plane centre.
+MMFF94 / MMFF94s and UFF use it (e.g. an amide N: relative error 2e-2).
+
+UFF's out-of-plane term multiplied by VectorOOPDerivative's result, which
+is cos(angle) * d(angle)/dx, without dividing by cos(angle) as MMFF94 does,
+so its gradient was off by that factor too.
+
+diff --git a/src/forcefield.cpp b/src/forcefield.cpp
+index 77118d4f8..953ac98d6 100644
+--- a/src/forcefield.cpp
++++ b/src/forcefield.cpp
+@@ -4328,14 +4328,18 @@ namespace OpenBabel
+     VectorSelfMultiply(temp, sin_dl);
+     VectorDivide(temp, sin_theta, temp);
+     VectorAdd(bn, temp, force_i);
+-    VectorSelfMultiply(force_i, (sin_theta/length_ji));
++    // Divide by length_ji * sin_theta, as the formula above and the vector3
++    // overload do. Multiplying by sin_theta / length_ji instead scaled this
++    // derivative (and k's) by sin^2(theta) against l's, so the gradient no
++    // longer matched the energy: a spurious net torque on every centre.
++    VectorDivide(force_i, length_ji * sin_theta, force_i);
+     /* k = ((cn + (((-jk + ji * cos_theta) * sin_dl) / sin_theta)) / length_jk) / sin_theta; */
+     VectorMultiply(ji, cos_theta, temp);
+     VectorSubtract(temp, jk, temp);
+     VectorSelfMultiply(temp, sin_dl);
+     VectorDivide(temp, sin_theta, temp);
+     VectorAdd(cn, temp, force_k);
+-    VectorSelfMultiply(force_k, (sin_theta/length_jk));
++    VectorDivide(force_k, length_jk * sin_theta, force_k);
+     /* j = -(i + k + l); */
+     VectorAdd(force_i, force_k, temp);
+     VectorAdd(force_l, temp, temp);
+diff --git a/src/forcefields/forcefielduff.cpp b/src/forcefields/forcefielduff.cpp
+index 13777d222..791bc21b8 100644
+--- a/src/forcefields/forcefielduff.cpp
++++ b/src/forcefields/forcefielduff.cpp
+@@ -355,8 +355,10 @@ namespace OpenBabel {
+ 	    if (!isfinite(angle))
+ 	      angle = 0.0; // doesn't explain why GetAngle is returning NaN but solves it for us;
+ 
+-      // somehow we already get the -1 from the OOPDeriv -- so we'll omit it here
+-      dE = koop * (c1*sin(angle) + 2.0 * c2 * sin(2.0*angle));
++      // VectorOOPDerivative returns cos(angle) * d(angle)/dx, which is where
++      // the -1 went, so dE has to divide by cos(angle) -- as MMFF94 does.
++      // Leaving it out scaled the gradient by cos(angle) against the energy.
++      dE = koop * (c1*sin(angle) + 2.0 * c2 * sin(2.0*angle)) / cos(angle);
+       OBForceField::VectorSelfMultiply(force_a, dE);
+       OBForceField::VectorSelfMultiply(force_b, dE);
+       OBForceField::VectorSelfMultiply(force_c, dE);

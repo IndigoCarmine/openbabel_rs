@@ -1,0 +1,253 @@
+Conjugate gradients: one Polak-Ribiere+ beta, descent fallback, count every step
+
+ConjugateGradientsTakeNSteps mixed beta atom by atom -- each atom's |g|^2
+over the squared length of its own previous *direction* -- which builds
+neither conjugate directions nor, necessarily, downhill ones. On taxol the
+method was still descending after 5000 steps under UFF, MMFF94 and GAFF.
+
+Compute beta once over all coordinates (Polak-Ribiere+, clipped at 0, so
+the method restarts itself whenever the gradient turns against the
+previous one), and fall back to steepest descent when the resulting
+direction is not a descent direction. The previous direction and force
+live in _grad1, now 2 * _ncoords long.
+
+ConjugateGradientsInitialize took a line-search step of its own that no
+step counter saw: ConjugateGradients(n) ran n + 1 line searches, and a
+caller driving Initialize/TakeNSteps could not count the first. Initialize
+now only sets up; the first TakeNSteps step is the steepest-descent one.
+
+diff --git a/src/forcefield.cpp b/src/forcefield.cpp
+index a5cda8f4d..937be09a9 100644
+--- a/src/forcefield.cpp
++++ b/src/forcefield.cpp
+@@ -2929,9 +2929,6 @@ namespace OpenBabel
+     if (!_validSetup || steps==0)
+       return;
+ 
+-    double e_n2;
+-    vector3 dir;
+-
+     _cstep = 0;
+     _nsteps = steps;
+     _econv = econv;
+@@ -2951,65 +2948,13 @@ namespace OpenBabel
+       OBFFLog("--------------------------------\n");
+     }
+ 
++    // The search direction and the force of the previous step, one after
++    // the other. No step is taken here: the first one, steepest descent for
++    // want of a previous direction, is ConjugateGradientsTakeNSteps' first,
++    // so every line search is counted against the step budget.
+     delete [] _grad1;
+-    _grad1 = new double[_ncoords];
+-    memset(_grad1, '\0', sizeof(double)*_ncoords);
+-
+-    // Take the first step (same as steepest descent because there is no
+-    // gradient from the previous step.
+-    FOR_ATOMS_OF_MOL (a, _mol) {
+-      unsigned int idx = a->GetIdx();
+-      unsigned int coordIdx = (idx - 1) * 3;
+-
+-      if (_constraints.IsFixed(idx) || (_fixAtom == idx) || (_ignoreAtom == idx)) {
+-        _gradientPtr[coordIdx] = 0.0;
+-        _gradientPtr[coordIdx+1] = 0.0;
+-        _gradientPtr[coordIdx+2] = 0.0;
+-      } else {
+-        if (!HasAnalyticalGradients()) {
+-          // use numerical gradients
+-          dir = NumericalDerivative(&*a) + _constraints.GetGradient(a->GetIdx());
+-        } else {
+-          // use analytical gradients
+-          dir = GetGradient(&*a) + _constraints.GetGradient(a->GetIdx());
+-        }
+-
+-        if (!_constraints.IsXFixed(idx))
+-          _gradientPtr[coordIdx] = dir.x();
+-        else
+-          _gradientPtr[coordIdx] = 0.0;
+-
+-        if (!_constraints.IsYFixed(idx))
+-          _gradientPtr[coordIdx+1] = dir.y();
+-        else
+-          _gradientPtr[coordIdx+1] = 0.0;
+-
+-        if (!_constraints.IsZFixed(idx))
+-          _gradientPtr[coordIdx+2] = dir.z();
+-        else
+-          _gradientPtr[coordIdx+2] = 0.0;
+-      }
+-    }
+-    // perform a linesearch
+-    switch (_linesearch) {
+-    case LineSearchType::Newton2Num:
+-      Newton2NumLineSearch(_gradientPtr);
+-      break;
+-    default:
+-    case LineSearchType::Simple:
+-      LineSearch(_mol.GetCoordinates(), _gradientPtr);
+-      break;
+-    }
+-    e_n2 = Energy() + _constraints.GetConstraintEnergy();
+-
+-    IF_OBFF_LOGLVL_LOW {
+-      snprintf(_logbuf, BUFF_SIZE, " %4d    %8.3f    %8.3f\n", 1, e_n2, _e_n1);
+-      OBFFLog(_logbuf);
+-    }
+-
+-    // save the direction and energy
+-    memcpy(_grad1, _gradientPtr, sizeof(double)*_ncoords);
+-    _e_n1 = e_n2;
++    _grad1 = new double[2 * _ncoords];
++    memset(_grad1, '\0', sizeof(double) * 2 * _ncoords);
+   }
+ 
+   bool OBForceField::ConjugateGradientsTakeNSteps(int n)
+@@ -3017,87 +2962,90 @@ namespace OpenBabel
+     if (!_validSetup)
+       return 0;
+ 
+-    double e_n2;
+-    double g2g2, g1g1, beta;
+-    vector3 grad2, dir2;
+-    vector3 grad1, dir1; // temporaries to perform dot product, etc.
+-    double maxgrad; // for convergence
+-
+     if (_ncoords != _mol.NumAtoms() * 3)
+       return false;
+ 
+-    e_n2 = 0.0;
++    double e_n2;
++    vector3 grad;
++    double maxgrad; // for convergence
++    double *dir = _grad1;              // search direction, kept between steps
++    double *prevforce = _grad1 + _ncoords;
++    std::vector<double> force(_ncoords);
+ 
+     for (int i = 1; i <= n; i++) {
+       _cstep++;
+       maxgrad = 0.0;
+ 
++      // The force (-gradient) on every coordinate free to move.
+       FOR_ATOMS_OF_MOL (a, _mol) {
+         unsigned int idx = a->GetIdx();
+-        unsigned int coordIdx = (a->GetIdx() - 1) * 3;
++        unsigned int coordIdx = (idx - 1) * 3;
+ 
+         if (_constraints.IsFixed(idx) || (_fixAtom == idx) || (_ignoreAtom == idx)) {
+-          _grad1[coordIdx] = 0.0;
+-          _grad1[coordIdx+1] = 0.0;
+-          _grad1[coordIdx+2] = 0.0;
++          force[coordIdx] = 0.0;
++          force[coordIdx+1] = 0.0;
++          force[coordIdx+2] = 0.0;
+         } else {
+           if (!HasAnalyticalGradients()) {
+             // use numerical gradients
+-            grad2 = NumericalDerivative(&*a) + _constraints.GetGradient(a->GetIdx());
++            grad = NumericalDerivative(&*a) + _constraints.GetGradient(a->GetIdx());
+           } else {
+             // use analytical gradients
+-            grad2 = GetGradient(&*a) + _constraints.GetGradient(a->GetIdx());
++            grad = GetGradient(&*a) + _constraints.GetGradient(a->GetIdx());
+           }
+ 
++          force[coordIdx] = _constraints.IsXFixed(idx) ? 0.0 : grad.x();
++          force[coordIdx+1] = _constraints.IsYFixed(idx) ? 0.0 : grad.y();
++          force[coordIdx+2] = _constraints.IsZFixed(idx) ? 0.0 : grad.z();
++
+           // Converged means every atom is at rest: track the largest
+           // gradient left to relax (fixed axes excluded) -- the gradient
+           // itself, not the search direction built from it below.
+-          double masked[3] = {
+-            _constraints.IsXFixed(idx) ? 0.0 : grad2.x(),
+-            _constraints.IsYFixed(idx) ? 0.0 : grad2.y(),
+-            _constraints.IsZFixed(idx) ? 0.0 : grad2.z() };
+-          maxgrad = std::max(maxgrad, AtomGradient2(masked));
+-
+-          // Fletcher-Reeves formula for Beta
+-          // http://en.wikipedia.org/wiki/Nonlinear_conjugate_gradient_method
+-          // NOTE: We make sure to reset and use the steepest descent direction
+-          //   after NumAtoms steps
+-          if (_cstep % _mol.NumAtoms() != 0) {
+-            g2g2 = dot(grad2, grad2);
+-            grad1 = vector3(_grad1[coordIdx], _grad1[coordIdx+1], _grad1[coordIdx+2]);
+-            g1g1 = dot(grad1, grad1);
+-            beta = g2g2 / g1g1;
+-            grad2 += beta * grad1;
+-          }
+-
+-          if (!_constraints.IsXFixed(idx))
+-            _grad1[coordIdx] = grad2.x();
+-          else
+-            _grad1[coordIdx] = 0.0;
+-
+-          if (!_constraints.IsYFixed(idx))
+-            _grad1[coordIdx+1] = grad2.y();
+-          else
+-            _grad1[coordIdx+1] = 0.0;
+-
+-          if (!_constraints.IsZFixed(idx))
+-            _grad1[coordIdx+2] = grad2.z();
+-          else
+-            _grad1[coordIdx+2] = 0.0;
++          maxgrad = std::max(maxgrad, AtomGradient2(&force[coordIdx]));
+         }
+       }
++
++      // Polak-Ribiere+ over all coordinates at once: beta is one number for
++      // the whole direction (a per-atom beta does not make conjugate
++      // directions, and need not even make a descent one), clipped at zero,
++      // which restarts the method from steepest descent whenever the
++      // gradient turns against the previous one. The first step, and every
++      // NumAtoms-th, restart unconditionally.
++      double ff = 0.0, fprev = 0.0, prevprev = 0.0;
++      for (unsigned int c = 0; c < _ncoords; ++c) {
++        ff += force[c] * force[c];
++        fprev += force[c] * prevforce[c];
++        prevprev += prevforce[c] * prevforce[c];
++      }
++      const int natoms = static_cast<int>(_ncoords / 3);
++      double beta = 0.0;
++      if (_cstep > 1 && natoms > 0 && _cstep % natoms != 0 && prevprev > 0.0)
++        beta = std::max(0.0, (ff - fprev) / prevprev);
++      if (!isfinite(beta))
++        beta = 0.0;
++
++      double descent = 0.0; // force . direction: positive downhill
++      for (unsigned int c = 0; c < _ncoords; ++c) {
++        dir[c] = force[c] + beta * dir[c];
++        descent += force[c] * dir[c];
++      }
++      // A direction that does not lead downhill cannot be line searched;
++      // fall back to steepest descent.
++      if (!(descent > 0.0))
++        for (unsigned int c = 0; c < _ncoords; ++c)
++          dir[c] = force[c];
++      memcpy(prevforce, force.data(), sizeof(double) * _ncoords);
++
+       // perform a linesearch
+       switch (_linesearch) {
+       case LineSearchType::Newton2Num:
+-        Newton2NumLineSearch(_grad1);
++        Newton2NumLineSearch(dir);
+         break;
+       default:
+       case LineSearchType::Simple:
+-        LineSearch(_mol.GetCoordinates(), _grad1);
++        LineSearch(_mol.GetCoordinates(), dir);
+         break;
+       }
+-      // save the direction
+-      memcpy(_gradientPtr, _grad1, sizeof(double)*_ncoords);
+ 
+       e_n2 = Energy() + _constraints.GetConstraintEnergy();
+ 
+@@ -3133,7 +3081,7 @@ namespace OpenBabel
+   void OBForceField::ConjugateGradients(int steps, double econv, int method)
+   {
+     ConjugateGradientsInitialize(steps, econv, method);
+-    if (steps > 1) // ConjugateGradientsInitialize takes the first step
++    if (steps > 0)
+       ConjugateGradientsTakeNSteps(steps);
+   }
+ 

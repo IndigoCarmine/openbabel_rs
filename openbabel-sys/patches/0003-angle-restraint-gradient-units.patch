@@ -1,0 +1,27 @@
+Angle restraints: take the gradient in the energy's unit (degrees)
+
+OBFFConstraints::GetConstraintEnergy charges an angle restraint
+0.0002 * f * (theta - target)^2 with theta in degrees, but multiplied
+its dE/dtheta_deg by VectorAngleDerivative's per-radian derivatives: the
+pull was 57x weaker than the energy, and minimizers stalled short of the
+target (butane C-C-C restrained to 95 deg: 96.2 deg after 2500 UFF CG
+steps, never converged). Multiply by RAD_TO_DEG. The distance and torsion
+restraints were checked against a central difference and are consistent.
+
+diff --git a/src/forcefield.cpp b/src/forcefield.cpp
+index 937be09a9..77118d4f8 100644
+--- a/src/forcefield.cpp
++++ b/src/forcefield.cpp
+@@ -544,7 +544,11 @@ namespace OpenBabel
+           delta = theta - i->constraint_value;
+           delta2 = delta * delta;
+           constraint_energy += 0.0002 * i->factor * delta2;
+-          dE = 0.0004 * i->factor * delta;
++          // The energy is in degrees, but VectorAngleDerivative's derivatives
++          // are per radian: dE/dx = dE/dtheta_deg * RAD_TO_DEG * dtheta_rad/dx.
++          // Without RAD_TO_DEG the pull was 57x weaker than the energy, and
++          // the minimizers stopped short of the target.
++          dE = 0.0004 * i->factor * delta * RAD_TO_DEG;
+ 
+           i->grada = dE * da;
+           i->gradb = dE * db;

@@ -3,6 +3,7 @@ name = "openbabel-cli"
 description = "Demo CLI for the openbabel Rust bindings"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
