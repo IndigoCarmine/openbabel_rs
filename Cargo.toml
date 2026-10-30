@@ -10,6 +10,9 @@ members = ["openbabel-sys", "openbabel", "cli"]
 [workspace.package]
 version = "0.4.8"
 edition = "2021"
+# The oldest toolchain the workspace builds with: the floor cxx 1.0.197 sets.
+# Also what clippy holds its suggestions to (no `as_chunks`, 1.88).
+rust-version = "1.85"
 license = "GPL-2.0-only"
 repository = "https://github.com/IndigoCarmine/openbabel_rs"
 

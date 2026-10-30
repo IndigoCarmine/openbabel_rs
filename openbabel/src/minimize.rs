@@ -250,7 +250,7 @@ impl Optimization {
             // shim clamps the final chunk to whatever was left of the budget, so
             // take the true total from `steps_taken` rather than overshooting it.
             cumulative = (cumulative + config.steps_per_frame).min(steps_taken);
-            let coordinates = chunk[1..].as_chunks::<3>().0.to_vec();
+            let coordinates = chunk[1..].chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect();
             frames.push(OptStep {
                 step: cumulative,
                 energy: chunk[0],
