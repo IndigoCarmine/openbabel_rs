@@ -1,0 +1,188 @@
+Minimizers: converge on the largest per-atom gradient, not the smallest
+
+SteepestDescentTakeNSteps, ConjugateGradientsTakeNSteps and the L-BFGS
+gradient gather each pair the energy criterion (|dE| < econv) with a
+per-atom gradient one (|g|^2 < _gconv = 0.01), but tracked the *minimum*
+|g|^2 over the atoms. One atom at rest -- typically a hydrogen -- was then
+enough to stop the run with the rest of the molecule still under load:
+[NH4+].CC(=O)[O-] under UFF stopped "converged" after a few hundred CG
+steps at E ~ +1.3..+2, against a minimum near -0.64. CG also measured the
+search direction (gradient plus beta times the previous direction) instead
+of the gradient.
+
+Track the maximum instead, over the gradient as the minimizer sees it
+(fixed atoms and fixed axes excluded, so a restrained axis cannot block
+convergence), and count a non-finite gradient as not at rest.
+
+diff --git a/include/openbabel/forcefield.h b/include/openbabel/forcefield.h
+index e7519ce87..5a1939838 100644
+--- a/include/openbabel/forcefield.h
++++ b/include/openbabel/forcefield.h
+@@ -552,9 +552,9 @@ const double GAS_CONSTANT = 8.31446261815324e-3 / KCAL_TO_KJ;  //!< kcal mol^-1
+     //! Gather the per-atom gradient as a flat vector for L-BFGS. Writes the
+     //! true gradient (negated from OB's "GetGradient() returns force"
+     //! convention), honors fixed-atom and per-axis constraints, and reports
+-    //! the minimum per-atom squared force as minGrad2 (matches the
+-    //! convergence metric used by SD/CG).
+-    void gatherLBFGSGradient(double* gradOut, double& minGrad2);
++    //! the largest per-atom squared gradient as maxGrad2 (the convergence
++    //! metric SD/CG use too).
++    void gatherLBFGSGradient(double* gradOut, double& maxGrad2);
+ #endif
+     // molecular dynamics variables
+     double 	_timestep; //!< Molecular dynamics time step in picoseconds
+diff --git a/src/forcefield.cpp b/src/forcefield.cpp
+index 131757832..a5cda8f4d 100644
+--- a/src/forcefield.cpp
++++ b/src/forcefield.cpp
+@@ -2788,6 +2788,16 @@ namespace OpenBabel
+     delete atom;
+   }
+ 
++  // Squared length of one atom's gradient, g[0..2], for the minimizers'
++  // convergence test: every atom must be at rest (largest squared gradient
++  // below _gconv). A gradient that is not finite is as far from rest as it
++  // gets, so it reports infinity rather than letting the max skip it.
++  static double AtomGradient2(const double *g)
++  {
++    const double g2 = g[0] * g[0] + g[1] * g[1] + g[2] * g[2];
++    return isfinite(g2) ? g2 : HUGE_VAL;
++  }
++
+   void OBForceField::SteepestDescentInitialize(int steps, double econv, int /*method*/)
+   {
+     if (!_validSetup)
+@@ -2827,7 +2837,7 @@ namespace OpenBabel
+ 
+     for (int i = 1; i <= n; i++) {
+       _cstep++;
+-      maxgrad = 1.0e20;
++      maxgrad = 0.0;
+ 
+       FOR_ATOMS_OF_MOL (a, _mol) {
+         unsigned int idx = a->GetIdx();
+@@ -2846,10 +2856,6 @@ namespace OpenBabel
+             dir = GetGradient(&*a) + _constraints.GetGradient(a->GetIdx());
+           }
+ 
+-          // check to see how large the gradients are
+-          if (dir.length_2() < maxgrad)
+-            maxgrad = dir.length_2();
+-
+           if (!_constraints.IsXFixed(idx))
+             _gradientPtr[coordIdx] = dir.x();
+           else
+@@ -2864,6 +2870,10 @@ namespace OpenBabel
+             _gradientPtr[coordIdx+2] = dir.z();
+           else
+             _gradientPtr[coordIdx+2] = 0.0;
++
++          // Converged means every atom is at rest: track the largest
++          // gradient left to relax (fixed axes excluded), not the smallest.
++          maxgrad = std::max(maxgrad, AtomGradient2(_gradientPtr + coordIdx));
+         }
+       }
+       // perform a linesearch
+@@ -3020,7 +3030,7 @@ namespace OpenBabel
+ 
+     for (int i = 1; i <= n; i++) {
+       _cstep++;
+-      maxgrad = 1.0e20;
++      maxgrad = 0.0;
+ 
+       FOR_ATOMS_OF_MOL (a, _mol) {
+         unsigned int idx = a->GetIdx();
+@@ -3039,6 +3049,15 @@ namespace OpenBabel
+             grad2 = GetGradient(&*a) + _constraints.GetGradient(a->GetIdx());
+           }
+ 
++          // Converged means every atom is at rest: track the largest
++          // gradient left to relax (fixed axes excluded) -- the gradient
++          // itself, not the search direction built from it below.
++          double masked[3] = {
++            _constraints.IsXFixed(idx) ? 0.0 : grad2.x(),
++            _constraints.IsYFixed(idx) ? 0.0 : grad2.y(),
++            _constraints.IsZFixed(idx) ? 0.0 : grad2.z() };
++          maxgrad = std::max(maxgrad, AtomGradient2(masked));
++
+           // Fletcher-Reeves formula for Beta
+           // http://en.wikipedia.org/wiki/Nonlinear_conjugate_gradient_method
+           // NOTE: We make sure to reset and use the steepest descent direction
+@@ -3051,10 +3070,6 @@ namespace OpenBabel
+             grad2 += beta * grad1;
+           }
+ 
+-          // check to see how large the gradients are
+-          if (grad2.length_2() < maxgrad)
+-            maxgrad = grad2.length_2();
+-
+           if (!_constraints.IsXFixed(idx))
+             _grad1[coordIdx] = grad2.x();
+           else
+@@ -3149,9 +3164,9 @@ namespace OpenBabel
+ 
+ #ifdef HAVE_EIGEN3
+ 
+-  void OBForceField::gatherLBFGSGradient(double* gradOut, double& minGrad2)
++  void OBForceField::gatherLBFGSGradient(double* gradOut, double& maxGrad2)
+   {
+-    minGrad2 = 1.0e20;
++    maxGrad2 = 0.0;
+     vector3 dir;
+     FOR_ATOMS_OF_MOL (a, _mol) {
+       unsigned int idx = a->GetIdx();
+@@ -3167,12 +3182,13 @@ namespace OpenBabel
+         else
+           dir = GetGradient(&*a) + _constraints.GetGradient(idx);
+ 
+-        if (dir.length_2() < minGrad2)
+-          minGrad2 = dir.length_2();
+-
+         gradOut[coordIdx]     = _constraints.IsXFixed(idx) ? 0.0 : -dir.x();
+         gradOut[coordIdx + 1] = _constraints.IsYFixed(idx) ? 0.0 : -dir.y();
+         gradOut[coordIdx + 2] = _constraints.IsZFixed(idx) ? 0.0 : -dir.z();
++
++        // Converged means every atom is at rest: the largest gradient left to
++        // relax (fixed axes excluded), not the smallest.
++        maxGrad2 = std::max(maxGrad2, AtomGradient2(gradOut + coordIdx));
+       }
+     }
+   }
+@@ -3210,8 +3226,8 @@ namespace OpenBabel
+     st.drt.setZero(_ncoords);
+ 
+     _e_n1 = Energy() + _constraints.GetConstraintEnergy();
+-    double minGrad2;
+-    gatherLBFGSGradient(st.grad.data(), minGrad2);
++    double maxGrad2;
++    gatherLBFGSGradient(st.grad.data(), maxGrad2);
+ 
+     memcpy(st.x.data(), _mol.GetCoordinates(), _ncoords * sizeof(double));
+ 
+@@ -3245,7 +3261,7 @@ namespace OpenBabel
+     const int m = st.m;
+     double* coords = _mol.GetCoordinates();
+     double fx = _e_n1;
+-    double minGrad2 = 1.0e20;
++    double maxGrad2 = HUGE_VAL;
+ 
+     // Monotone-decrease line search (cf. ASE's L-BFGS). Strict Armijo
+     // doesn't work well on FF energies from poor starting geometries:
+@@ -3289,7 +3305,7 @@ namespace OpenBabel
+           coords[c] = st.x[c] + step * st.drt[c];
+ 
+         fx = Energy() + _constraints.GetConstraintEnergy();
+-        gatherLBFGSGradient(st.grad.data(), minGrad2);
++        gatherLBFGSGradient(st.grad.data(), maxGrad2);
+ 
+         if (fx < fxInit) {
+           lsOk = true;
+@@ -3310,7 +3326,7 @@ namespace OpenBabel
+       memcpy(st.x.data(), coords, _ncoords * sizeof(double));
+ 
+       // Convergence test (matches SD/CG semantics).
+-      if (fabs(fx - _e_n1) < _econv && (minGrad2 < _gconv)) {
++      if (fabs(fx - _e_n1) < _econv && (maxGrad2 < _gconv)) {
+         IF_OBFF_LOGLVL_LOW {
+           snprintf(_logbuf, BUFF_SIZE, " %4d    %8.3f    %8.3f\n", _cstep, fx, _e_n1);
+           OBFFLog(_logbuf);

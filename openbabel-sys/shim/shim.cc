@@ -404,9 +404,11 @@ double descriptor(const Molecule &mol, rust::Str id, bool &ok) {
 // with garbage, logs through a garbage stream pointer and delete[]s a garbage
 // `_grad1` (only the one-argument Setup's first-use branch resets it,
 // forcefield.cpp:858-864; the two-argument one does not, :913-918) --
-// corrupting the heap, which is why this shim used to avoid private instances.
-// `new_instance` gives each one a valid log stream and level and runs that
-// first-use branch before anything else.
+// corrupting the heap, which is why this shim used to avoid private instances
+// (and refused UFF + L-BFGS, where it showed). OpenBabel as patched here
+// (openbabel-sys/patches) initialises those members itself; `new_instance`
+// still gives each instance a log stream that discards, and runs that
+// first-use branch, which parses the parameter files, before anything else.
 
 namespace {
 // Look up a force field plugin by id via the DLL-exported plugin registry.
@@ -2059,6 +2061,68 @@ rust::Vec<double> optimizer_run_trajectory(Molecule &mol, rust::Str ff_id, uint3
   } catch (...) {
     stop_reason = OPT_STOP_FAILED;
     ff_finish(ff);
+  }
+  return out;
+}
+
+rust::Vec<double> ff_energy_gradient(const Molecule &mol, rust::Str ff_id,
+                                     const Constraints &constraints) {
+  rust::Vec<double> out;
+  OpenBabel::OBForceField *ff = nullptr;
+  try {
+    OpenBabel::OBMol &m = const_cast<Molecule &>(mol).mol;
+    ff = setup_forcefield(m, to_std(ff_id), const_cast<Constraints &>(constraints).c);
+    if (!ff) return out;
+    OpenBabel::OBFFConstraints &installed = ff->GetConstraints();
+    // Energy(true) fills the force-field gradients; GetConstraintEnergy() fills
+    // the restraint gradients that GetGradient(idx) then reads -- the order the
+    // minimizers evaluate them in.
+    double e = ff->Energy(true) + installed.GetConstraintEnergy();
+    out.push_back(e);
+    const bool analytic = ff->HasAnalyticalGradients();
+    const unsigned int natoms = m.NumAtoms();
+    for (unsigned int i = 1; i <= natoms; ++i) {
+      OpenBabel::OBAtom *a = m.GetAtom(static_cast<int>(i));
+      OpenBabel::vector3 g(0.0, 0.0, 0.0);
+      if (!installed.IsFixed(static_cast<int>(i))) {
+        if (analytic) {
+          // Both GetGradient()s return the force, -dE/dx.
+          g = -(ff->GetGradient(a) + installed.GetGradient(static_cast<int>(i)));
+        } else {
+          // Central differences of the same surface, for a force field without
+          // analytic gradients. The force field evaluates its own copy of the
+          // molecule, so perturb a copy and hand it the coordinates.
+          const double h = 1.0e-5;
+          OpenBabel::OBMol probe(m);
+          double *xyz = probe.GetCoordinates();
+          double comp[3];
+          for (int axis = 0; axis < 3; ++axis) {
+            double &x = xyz[(i - 1) * 3 + axis];
+            const double x0 = x;
+            x = x0 + h;
+            ff->SetCoordinates(probe);
+            double ep = ff->Energy(false) + installed.GetConstraintEnergy();
+            x = x0 - h;
+            ff->SetCoordinates(probe);
+            double em = ff->Energy(false) + installed.GetConstraintEnergy();
+            x = x0;
+            comp[axis] = (ep - em) / (2.0 * h);
+          }
+          ff->SetCoordinates(m);
+          g.Set(comp[0], comp[1], comp[2]);
+        }
+        if (installed.IsXFixed(static_cast<int>(i))) g.SetX(0.0);
+        if (installed.IsYFixed(static_cast<int>(i))) g.SetY(0.0);
+        if (installed.IsZFixed(static_cast<int>(i))) g.SetZ(0.0);
+      }
+      out.push_back(g.x());
+      out.push_back(g.y());
+      out.push_back(g.z());
+    }
+    ff_finish(ff);
+  } catch (...) {
+    ff_finish(ff);
+    out = rust::Vec<double>();
   }
   return out;
 }

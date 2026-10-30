@@ -35,8 +35,12 @@
 //!
 //! Convergence note: OpenBabel 3.2.1 lets you set only the **energy** criterion
 //! (`energy_convergence`). Its steepest-descent / conjugate-gradient / L-BFGS
-//! minimizers combine it with a *fixed* internal gradient criterion; there is no
-//! public setter for a gradient tolerance, so this API does not expose one.
+//! minimizers combine it with a *fixed* internal gradient criterion — every
+//! atom's gradient below 0.1 (energy unit per ångström); there is no public
+//! setter for a gradient tolerance, so this API does not expose one. (Stock
+//! OpenBabel tested the *smallest* atom's gradient, which let a run stop with
+//! the rest of the molecule still under load; the build here carries a fix,
+//! see `openbabel-sys/patches`.)
 //!
 //! Those minimizers also signal "converged" and "out of steps" with the same
 //! bare `false`, which makes a half-finished minimization look identical to a
@@ -54,12 +58,6 @@
 //! }
 //! ```
 //!
-//! L-BFGS caveat: in the vendored OpenBabel 3.2.1 the L-BFGS minimizer corrupts
-//! the heap when paired with the **UFF** force field (a bug in that
-//! locally-added minimizer). That one pairing is refused — it returns `None` /
-//! an empty trajectory rather than running. Use conjugate gradients or steepest
-//! descent with UFF; L-BFGS is fine with MMFF94, MMFF94s, GAFF, and Ghemical.
-
 use openbabel_sys::ffi;
 
 use crate::{with_ob, Constraints, Molecule};
@@ -77,8 +75,7 @@ pub enum StopReason {
     /// The step budget ran out with the geometry still moving. Run again from
     /// the current coordinates to continue.
     MaxSteps,
-    /// Unknown force field, setup failure, or an unsupported pairing. No
-    /// trajectory was produced.
+    /// Unknown force field or setup failure. No trajectory was produced.
     Failed,
 }
 
@@ -178,25 +175,10 @@ impl Minimizer {
         self
     }
 
-    /// Whether this force-field / algorithm pairing is safe to run.
-    ///
-    /// The L-BFGS minimizer in the vendored OpenBabel 3.2.1 (a local addition,
-    /// not part of upstream 3.2.1) corrupts the heap when driven with the UFF
-    /// force field specifically. Since that is undefined behaviour we cannot
-    /// contain, this combination is refused; every other pairing is fine (UFF
-    /// works with steepest descent / conjugate gradients, and L-BFGS works with
-    /// the MMFF94, MMFF94s, GAFF, and Ghemical force fields).
-    fn is_supported(&self) -> bool {
-        !(matches!(self.algorithm, Algorithm::Lbfgs) && self.forcefield.eq_ignore_ascii_case("uff"))
-    }
-
     /// Run the minimization to completion (no trajectory), returning the final
-    /// energy or `None` on an unsupported pairing / unknown force field / setup
-    /// failure. Backs `Molecule::optimize_geometry_with`.
+    /// energy or `None` on an unknown force field / setup failure. Backs
+    /// `Molecule::optimize_geometry_with`.
     pub(crate) fn run(&self, mol: &mut Molecule) -> Option<f64> {
-        if !self.is_supported() {
-            return None;
-        }
         let mut ok = true;
         let e = with_ob(|| {
             ffi::optimizer_run_to_end(
@@ -244,13 +226,6 @@ pub struct Optimization {
 
 impl Optimization {
     pub(crate) fn new(mol: &mut Molecule, config: &Minimizer) -> Self {
-        if !config.is_supported() {
-            return Optimization {
-                frames: Vec::new().into_iter(),
-                stop_reason: StopReason::Failed,
-                steps_taken: 0,
-            };
-        }
         let mut stop_code = 2u32; // OPT_STOP_FAILED
         let mut steps_taken = 0u32;
         let flat = with_ob(|| {
@@ -275,7 +250,7 @@ impl Optimization {
             // shim clamps the final chunk to whatever was left of the budget, so
             // take the true total from `steps_taken` rather than overshooting it.
             cumulative = (cumulative + config.steps_per_frame).min(steps_taken);
-            let coordinates = chunk[1..].chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect();
+            let coordinates = chunk[1..].as_chunks::<3>().0.to_vec();
             frames.push(OptStep {
                 step: cumulative,
                 energy: chunk[0],

@@ -71,10 +71,8 @@ Analysis:
 > A minimization runs as one atomic operation (OpenBabel keeps force-field state
 > in shared/static members), so `minimize` computes the whole trajectory eagerly
 > and leaves the molecule at the final geometry. Only the **energy** convergence
-> criterion is tunable — OpenBabel 3.2.1 fixes the gradient criterion internally.
-> The `Lbfgs` algorithm is rejected with the `UFF` force field specifically (that
-> pairing corrupts memory in the vendored OpenBabel); use `ConjugateGradients` or
-> `SteepestDescent` with UFF.
+> criterion is tunable — OpenBabel 3.2.1 fixes the gradient criterion internally
+> (every atom's gradient below 0.1). Every algorithm works with every force field.
 
 Charges, atom chemistry & identifiers:
 

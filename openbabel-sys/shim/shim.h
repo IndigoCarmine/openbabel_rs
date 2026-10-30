@@ -376,6 +376,15 @@ rust::Vec<double> optimizer_run_trajectory(Molecule &mol, rust::Str ff_id,
                                            uint32_t frame_interval,
                                            uint32_t &stop_reason, uint32_t &steps_taken);
 
+// The surface the minimizers above descend, at `mol`'s current geometry: the
+// force field's energy plus the restraint energy of `constraints`, and its
+// gradient dE/dx (not OpenBabel's force convention), flattened as
+// [energy, gx0, gy0, gz0, gx1, ...]. Fixed atoms and fixed axes get a zero
+// gradient, as the minimizers see them. Empty on unknown force field or setup
+// failure.
+rust::Vec<double> ff_energy_gradient(const Molecule &mol, rust::Str ff_id,
+                                     const Constraints &constraints);
+
 // --- Molecule construction & editing --------------------------------------
 // Add a new atom of `atomic_num`; returns its 0-based index.
 uint32_t mol_add_atom(Molecule &mol, uint32_t atomic_num);

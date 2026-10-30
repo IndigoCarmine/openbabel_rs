@@ -12,6 +12,9 @@
 //!
 //! Prefer the safe `openbabel` crate; this crate is the unsafe plumbing.
 
+// The bridge mirrors the shim's C++ signatures one to one, out-params and all;
+// a few take more arguments than clippy's default limit.
+#[allow(clippy::too_many_arguments)]
 #[cxx::bridge(namespace = "ob_shim")]
 pub mod ffi {
     unsafe extern "C++" {
@@ -369,6 +372,11 @@ pub mod ffi {
             stop_reason: &mut u32,
             steps_taken: &mut u32,
         ) -> Vec<f64>;
+        /// The surface the minimizers descend at `mol`'s current geometry:
+        /// force-field energy plus the restraint energy of `constraints`, and
+        /// its gradient dE/dx, flattened as `[energy, gx0, gy0, gz0, …]`. Fixed
+        /// atoms / axes get a zero gradient. Empty on unknown FF / setup failure.
+        fn ff_energy_gradient(mol: &Molecule, ff_id: &str, constraints: &Constraints) -> Vec<f64>;
 
         // Molecule construction & editing.
         /// Add an atom of `atomic_num`; returns its 0-based index.

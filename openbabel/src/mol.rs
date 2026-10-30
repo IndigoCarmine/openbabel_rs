@@ -563,6 +563,32 @@ impl Molecule {
         if ok { Some(e) } else { None }
     }
 
+    /// The energy surface OpenBabel's minimizers descend, and its gradient, at
+    /// the current geometry: the force field's energy plus the restraint energy
+    /// of `constraints` (pass [`Constraints::new()`](crate::Constraints::new)
+    /// for none), and `dE/dx` per atom in index order, in the force field's
+    /// energy unit per ångström. Fixed atoms and fixed axes get a zero gradient,
+    /// as the minimizers see them. `None` if the force field is unknown or setup
+    /// fails.
+    ///
+    /// The gradient is the force field's own (analytic where it has one), so
+    /// comparing it with a finite difference of the returned energy checks
+    /// that the two agree. The energy is the raw surface: unlike
+    /// [`energy`](Self::energy) it carries no correction for UFF's torsion
+    /// stand-in at exactly 90° / 180° (see the shim), since the minimizers do
+    /// not see one either.
+    pub fn energy_gradient(
+        &self,
+        forcefield: &str,
+        constraints: &crate::Constraints,
+    ) -> Option<(f64, Vec<[f64; 3]>)> {
+        let flat = with_ob(|| {
+            ffi::ff_energy_gradient(self.as_inner(), forcefield, constraints.as_inner())
+        });
+        let (&energy, grad) = flat.split_first()?;
+        Some((energy, grad.as_chunks::<3>().0.to_vec()))
+    }
+
     /// Energy-minimize the geometry in place with **OpenBabel's own optimizer**
     /// (`steps` conjugate-gradient steps of the named force field). Returns the
     /// final energy, or `None` if the force field is unknown or setup fails.
@@ -798,7 +824,7 @@ impl Molecule {
             return None;
         }
         let flat = with_ob(|| ffi::mol_conformer_coordinates(self.as_inner(), index));
-        Some(flat.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect())
+        Some(flat.as_chunks::<3>().0.to_vec())
     }
 
     /// The energy of every stored conformer under `forcefield`, in conformer
@@ -848,9 +874,7 @@ impl Molecule {
     /// [`clone`]: Self::clone
     pub fn find_angles(&self) -> Vec<[u32; 3]> {
         let flat = with_ob(|| ffi::mol_find_angles(self.as_inner()));
-        flat.chunks_exact(3)
-            .map(|c| [c[0], c[1], c[2]])
-            .collect()
+        flat.as_chunks::<3>().0.to_vec()
     }
 
     /// Every torsion in the molecule, as `[a, b, c, d]` quads of 0-based atom
@@ -865,9 +889,7 @@ impl Molecule {
     /// [`clone`]: Self::clone
     pub fn find_torsions(&self) -> Vec<[u32; 4]> {
         let flat = with_ob(|| ffi::mol_find_torsions(self.as_inner()));
-        flat.chunks_exact(4)
-            .map(|c| [c[0], c[1], c[2], c[3]])
-            .collect()
+        flat.as_chunks::<4>().0.to_vec()
     }
 
     /// Remove disconnected fragments (e.g. counterions) smaller than

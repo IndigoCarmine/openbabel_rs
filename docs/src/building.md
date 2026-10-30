@@ -44,8 +44,10 @@ bridge and the shim are still compiled, which is quick.
 against the archive's headers and links into its library, so an archive from
 another version fails to link or, worse, misbehaves. Each archive records what
 it was built from in `openbabel-sys-prebuilt.txt` — the target, the OpenBabel
-and Eigen submodule commits, and a hash of `build.rs` — and `build.rs` fails the
-build on any difference instead of quietly falling back to a source build.
+and Eigen submodule commits, a hash of `build.rs` and a hash of the patches in
+`openbabel-sys/patches/` — and `build.rs` fails the build on any difference
+instead of quietly falling back to a source build. A change to a patch therefore
+needs new archives, exactly like a submodule bump.
 Reading the commits needs `git` on `PATH`.
 
 In practice: depend on openbabel_rs by tag, and download the release with that
@@ -91,6 +93,22 @@ throws the source build away and runs the tests again against the unpacked
 archive. Only when every platform passes are the archives attached to the
 release — so tag every version bump. A manual run of the workflow does all of
 it short of publishing.
+
+## Patches to OpenBabel {#patches}
+
+`vendor/openbabel-src` is the upstream OpenBabel repository, so fixes to
+OpenBabel itself cannot be committed there. They live in
+`openbabel-sys/patches/*.patch` instead — ordinary unified diffs against the
+submodule commit, applied by `build.rs` in file-name order before CMake runs.
+Each one says in its header what it fixes and why.
+
+Applying them is idempotent: a file whose hunks already read the patched way is
+left untouched, so incremental builds stay incremental. A patch that no longer
+fits — after a submodule bump, typically — fails the build with the file it
+could not patch; redo it against the new commit rather than dropping it. To
+change a patch, edit the source in `vendor/openbabel-src`, and regenerate the
+file with `git -C vendor/openbabel-src diff` (the build-generated edits to the
+force-field headers and the InChI stub file are not part of any patch).
 
 ## Linux / macOS: a relocatable install
 

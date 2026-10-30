@@ -67,8 +67,9 @@ Two things to keep in mind:
 
 - **Convergence is energy-only.** OpenBabel 3.2.1 lets you set the *energy*
   criterion (`energy_convergence`); it combines that with a *fixed* internal
-  gradient criterion for which there is no public setter. So this API does not
-  expose a gradient tolerance — by design, not by omission.
+  gradient criterion — every atom's gradient below 0.1 — for which there is no
+  public setter. So this API does not expose a gradient tolerance — by design,
+  not by omission.
 - **Builder methods take `&mut self` and return `&mut Self`,** so they chain and
   can be applied conditionally.
 
