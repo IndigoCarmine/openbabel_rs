@@ -279,10 +279,10 @@ fn conjugate_gradients_counts_its_first_step() {
     }
 }
 
-/// GAFF's gradient on generated taxol was NaN on some atoms. L-BFGS (which,
-/// unlike the other minimizers' line searches, does not zero a NaN direction)
-/// then found no lower energy along it and stopped after one step, reporting
-/// convergence at E ~ 3716 where conjugate gradients went on to ~1400.
+/// GAFF's gradient on taxol was NaN on some atoms. L-BFGS (which, unlike the
+/// other minimizers' line searches, does not zero a NaN direction) then found
+/// no lower energy along it and stopped after one step, reporting convergence
+/// at E ~ 662 -- where it started -- while conjugate gradients went on to ~470.
 #[test]
 fn gaff_lbfgs_minimizes_taxol() {
     let mut mol = taxol();
