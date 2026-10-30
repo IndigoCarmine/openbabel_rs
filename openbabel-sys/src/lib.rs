@@ -377,6 +377,13 @@ pub mod ffi {
         /// its gradient dE/dx, flattened as `[energy, gx0, gy0, gz0, …]`. Fixed
         /// atoms / axes get a zero gradient. Empty on unknown FF / setup failure.
         fn ff_energy_gradient(mol: &Molecule, ff_id: &str, constraints: &Constraints) -> Vec<f64>;
+        /// Test support, not API: construct a force field the way
+        /// `MakeNewInstance()` does, on heap memory filled with 0xA5, check that
+        /// OpenBabel's own initialisation left none of its pointer or logging
+        /// members holding that garbage, then run `Setup(mol, constraints)` and
+        /// L-BFGS on it and destroy it. Empty on success, else what went wrong.
+        #[doc(hidden)]
+        fn probe_heap_forcefield(mol: &Molecule) -> String;
 
         // Molecule construction & editing.
         /// Add an atom of `atomic_num`; returns its 0-based index.

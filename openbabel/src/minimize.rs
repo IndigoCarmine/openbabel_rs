@@ -305,3 +305,23 @@ impl std::fmt::Debug for Optimization {
             .finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// UFF + L-BFGS corrupted the heap: OBForceField initialised none of its
+    /// pointer and logging members, UFF's constructor neither, so an instance
+    /// from MakeNewInstance() started with whatever its heap block held, and
+    /// Setup(mol, constraints), the minimizers and the destructor delete[]d and
+    /// logged through it. The shim's probe constructs such an instance on
+    /// memory filled with garbage, which makes that independent of what the
+    /// allocator hands out.
+    #[test]
+    fn a_heap_instance_starts_initialised() {
+        let mol = Molecule::parse(include_str!("../tests/data/ammonium_acetate.sdf"), "sdf")
+            .expect("fixture");
+        let failure = with_ob(|| ffi::probe_heap_forcefield(mol.as_inner()));
+        assert!(failure.is_empty(), "{failure}");
+    }
+}
