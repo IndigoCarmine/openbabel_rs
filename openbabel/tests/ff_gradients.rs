@@ -136,6 +136,19 @@ fn analytic_gradients_match_the_energy() {
     }
 }
 
+/// Ibuprofen as the app minimized it under MMFF94s (from OPE-27), kicked by
+/// 0.15 Å. There SD and L-BFGS stopped after one step with an RMS gradient of
+/// 0.04 left: the out-of-plane gradient was not the energy's.
+#[test]
+fn mmff_gradient_matches_on_kicked_ibuprofen() {
+    let mut mol = Molecule::parse(include_str!("data/ibuprofen_mmff94s.mol"), "mol")
+        .expect("ibuprofen fixture");
+    kick(&mut mol, 0.15);
+    for ff in ["MMFF94s", "MMFF94"] {
+        assert_gradient_matches("ibuprofen (kicked 0.15 Å)", &mol, ff, &Constraints::new());
+    }
+}
+
 /// GAFF taxol, unkicked: the geometry as generated, where GAFF's gradient was
 /// NaN and L-BFGS stopped after one step.
 #[test]
